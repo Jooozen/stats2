@@ -25,8 +25,10 @@ export interface Game {
   status: 'live' | 'finished';
   currentQuarter: number;
   createdAt: Date;
-  // タイマー状態（永続化）
-  timerSeconds?: number;     // 蓄積秒数（一時停止時に保存）
+  // クォーター設定
+  quarterMinutes?: number;   // 1クォーターの時間（分）デフォルト10
+  // タイマー状態（永続化）カウントダウン残り秒数
+  timerSeconds?: number;     // 残り秒数（一時停止時に保存）
   timerStartedAt?: number;   // Date.now() タイマー開始時刻（実行中のみ）
   timerRunning?: boolean;    // タイマー実行中フラグ
   // 出場選手管理（永続化）

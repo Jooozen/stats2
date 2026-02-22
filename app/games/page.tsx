@@ -38,6 +38,9 @@ export default function GamesPage() {
     new Date().toISOString().split('T')[0]
   );
 
+  // クォーター時間（分）
+  const [quarterMinutes, setQuarterMinutes] = useState(10);
+
   // 対戦相手モード: 'existing'=登録済みから選択, 'new'=新規入力
   const [opponentMode, setOpponentMode] = useState<'existing' | 'new'>('existing');
   const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<number | null>(null);
@@ -176,6 +179,8 @@ export default function GamesPage() {
       status: 'live',
       currentQuarter: 1,
       createdAt: new Date(),
+      quarterMinutes,
+      timerSeconds: quarterMinutes * 60,
     });
 
     router.push(`/games/${gameId}`);
@@ -250,6 +255,28 @@ export default function GamesPage() {
                 onChange={(e) => setGameDate(e.target.value)}
                 className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
+            </div>
+
+            {/* クォーター時間 */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                1クォーターの時間
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {[5, 6, 7, 8, 10, 12].map((min) => (
+                  <button
+                    key={min}
+                    onClick={() => setQuarterMinutes(min)}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                      quarterMinutes === min
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {min}分
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 対戦相手選択モード */}

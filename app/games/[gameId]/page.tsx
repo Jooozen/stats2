@@ -63,11 +63,15 @@ export default function GameStatsPage() {
   const [loading, setLoading] = useState(true);
   const [feedbackMessage, setFeedbackMessage] = useState('');
 
-  // タイマー
-  const [timerDisplay, setTimerDisplay] = useState(0);
+  // タイマー（カウントダウン）
+  const [timerDisplay, setTimerDisplay] = useState(600); // 残り秒数
   const [timerRunning, setTimerRunning] = useState(false);
-  const accumulatedRef = useRef(0);
+  const remainingRef = useRef(600); // 残り秒数（開始時点）
   const startTimeRef = useRef(0);
+  const [quarterDuration, setQuarterDuration] = useState(600); // 1Q秒数
+  // 停止時の手入力用
+  const [editMin, setEditMin] = useState('');
+  const [editSec, setEditSec] = useState('');
 
   // 出場管理
   const [onCourtIds, setOnCourtIds] = useState<Set<number>>(new Set());
@@ -96,15 +100,24 @@ export default function GameStatsPage() {
       setGame(g);
       setQuarter(g.currentQuarter);
 
-      const saved = g.timerSeconds || 0;
+      // クォーター時間を復元
+      const qMins = g.quarterMinutes || 10;
+      const qDur = qMins * 60;
+      setQuarterDuration(qDur);
+
+      // タイマー復元（カウントダウン: timerSeconds = 残り秒数）
+      const saved = g.timerSeconds ?? qDur;
       if (g.timerRunning && g.timerStartedAt) {
         const elapsed = (Date.now() - g.timerStartedAt) / 1000;
-        accumulatedRef.current = saved + elapsed;
-        startTimeRef.current = Date.now();
-        setTimerRunning(true);
-        setTimerDisplay(accumulatedRef.current);
+        const remaining = Math.max(0, saved - elapsed);
+        remainingRef.current = remaining;
+        if (remaining > 0) {
+          startTimeRef.current = Date.now();
+          setTimerRunning(true);
+        }
+        setTimerDisplay(remaining);
       } else {
-        accumulatedRef.current = saved;
+        remainingRef.current = saved;
         setTimerDisplay(saved);
       }
 
@@ -139,61 +152,86 @@ export default function GameStatsPage() {
     loadGame();
   }, [loadGame]);
 
-  // タイマー更新
+  // タイマー更新（カウントダウン）
   useEffect(() => {
     if (!timerRunning) return;
     const interval = setInterval(() => {
-      setTimerDisplay(
-        accumulatedRef.current + (Date.now() - startTimeRef.current) / 1000
-      );
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      const remaining = Math.max(0, remainingRef.current - elapsed);
+      setTimerDisplay(remaining);
+      if (remaining <= 0) {
+        // 時間切れ → 自動停止
+        remainingRef.current = 0;
+        setTimerRunning(false);
+        if (game?.id) {
+          db.games.update(game.id, {
+            timerSeconds: 0,
+            timerRunning: false,
+            timerStartedAt: undefined,
+          });
+        }
+      }
     }, 200);
     return () => clearInterval(interval);
-  }, [timerRunning]);
+  }, [timerRunning, game?.id]);
 
+  // 経過ゲーム時間（スタッツ記録用: クォーター開始からの秒数）
   function getGameTime(): number {
-    if (timerRunning) {
-      return Math.floor(
-        accumulatedRef.current + (Date.now() - startTimeRef.current) / 1000
-      );
-    }
-    return Math.floor(accumulatedRef.current);
+    const remaining = timerRunning
+      ? Math.max(0, remainingRef.current - (Date.now() - startTimeRef.current) / 1000)
+      : remainingRef.current;
+    return Math.floor(quarterDuration - remaining);
   }
 
   async function toggleTimer() {
     if (timerRunning) {
-      accumulatedRef.current += (Date.now() - startTimeRef.current) / 1000;
-      setTimerDisplay(accumulatedRef.current);
+      // 一時停止
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      remainingRef.current = Math.max(0, remainingRef.current - elapsed);
+      setTimerDisplay(remainingRef.current);
       setTimerRunning(false);
       if (game?.id) {
         await db.games.update(game.id, {
-          timerSeconds: accumulatedRef.current,
+          timerSeconds: remainingRef.current,
           timerRunning: false,
           timerStartedAt: undefined,
         });
       }
     } else {
+      // 開始（残り0なら開始しない）
+      if (remainingRef.current <= 0) return;
       startTimeRef.current = Date.now();
       setTimerRunning(true);
       if (game?.id) {
         await db.games.update(game.id, {
           timerRunning: true,
           timerStartedAt: Date.now(),
-          timerSeconds: accumulatedRef.current,
+          timerSeconds: remainingRef.current,
         });
       }
     }
   }
 
   async function resetTimer() {
-    accumulatedRef.current = 0;
-    setTimerDisplay(0);
+    remainingRef.current = quarterDuration;
+    setTimerDisplay(quarterDuration);
     setTimerRunning(false);
     if (game?.id) {
       await db.games.update(game.id, {
-        timerSeconds: 0,
+        timerSeconds: quarterDuration,
         timerRunning: false,
         timerStartedAt: undefined,
       });
+    }
+  }
+
+  // 停止中に手入力で時間変更
+  async function setTimerManual(mins: number, secs: number) {
+    const total = Math.max(0, Math.min(mins * 60 + secs, 99 * 60 + 59));
+    remainingRef.current = total;
+    setTimerDisplay(total);
+    if (game?.id) {
+      await db.games.update(game.id, { timerSeconds: total });
     }
   }
 
@@ -256,13 +294,14 @@ export default function GameStatsPage() {
     if (!confirm('試合を終了しますか？')) return;
     if (game?.id) {
       if (timerRunning) {
-        accumulatedRef.current += (Date.now() - startTimeRef.current) / 1000;
+        const elapsed = (Date.now() - startTimeRef.current) / 1000;
+        remainingRef.current = Math.max(0, remainingRef.current - elapsed);
         setTimerRunning(false);
       }
       await db.games.update(game.id, {
         status: 'finished' as const,
         timerRunning: false,
-        timerSeconds: accumulatedRef.current,
+        timerSeconds: remainingRef.current,
       });
       router.push(`/games/${game.id}/summary`);
     }
@@ -353,17 +392,67 @@ export default function GameStatsPage() {
               {opponentTeam?.name || '相手'}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 ml-2">
-            <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded">
+          <div className="flex items-center gap-1 ml-2">
+            <span className="bg-orange-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
               {QUARTER_LABELS[quarter - 1]}
             </span>
-            <button
-              onClick={toggleTimer}
-              className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-mono font-bold px-2 py-0.5 rounded transition-colors"
-            >
-              <span className="tabular-nums">{formatTime(timerDisplay)}</span>
-              <span className="text-xs">{timerRunning ? '⏸' : '▶'}</span>
-            </button>
+            {timerRunning ? (
+              /* 動作中: 表示のみ + 停止ボタン */
+              <button
+                onClick={toggleTimer}
+                className={`flex items-center gap-1 text-sm font-mono font-bold px-2 py-0.5 rounded transition-colors ${
+                  timerDisplay <= 60 ? 'bg-red-700 hover:bg-red-600 text-red-100 animate-pulse' : 'bg-gray-700 hover:bg-gray-600 text-white'
+                }`}
+              >
+                <span className="tabular-nums">{formatTime(timerDisplay)}</span>
+                <span className="text-xs">⏸</span>
+              </button>
+            ) : (
+              /* 停止中: 手入力可能 + 開始ボタン */
+              <div className="flex items-center gap-0.5">
+                <input
+                  type="number"
+                  value={editMin || String(Math.floor(timerDisplay / 60))}
+                  onChange={(e) => setEditMin(e.target.value)}
+                  onBlur={() => {
+                    const m = parseInt(editMin) || 0;
+                    const s = Math.floor(timerDisplay % 60);
+                    setTimerManual(m, s);
+                    setEditMin('');
+                  }}
+                  className="w-8 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  inputMode="numeric"
+                  min="0"
+                />
+                <span className="text-gray-400 text-sm font-bold">:</span>
+                <input
+                  type="number"
+                  value={editSec || String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
+                  onChange={(e) => setEditSec(e.target.value)}
+                  onBlur={() => {
+                    const m = Math.floor(timerDisplay / 60);
+                    const s = parseInt(editSec) || 0;
+                    setTimerManual(m, Math.min(s, 59));
+                    setEditSec('');
+                  }}
+                  className="w-8 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  inputMode="numeric"
+                  min="0"
+                  max="59"
+                />
+                <button
+                  onClick={toggleTimer}
+                  disabled={timerDisplay <= 0}
+                  className={`ml-0.5 px-1.5 py-0.5 rounded text-xs font-bold transition-colors ${
+                    timerDisplay > 0
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  ▶
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-center gap-1 mt-1.5">
