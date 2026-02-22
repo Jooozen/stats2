@@ -79,3 +79,23 @@ export class BasketballDB extends Dexie {
 }
 
 export const db = new BasketballDB();
+
+// サンプルデータ投入（チームが1つもない場合のみ）
+export async function ensureExampleData() {
+  const count = await db.teams.count();
+  if (count > 0) return;
+
+  const teamId = await db.teams.add({
+    name: 'example',
+    isMyTeam: true,
+    createdAt: new Date(),
+  });
+
+  await db.players.bulkAdd([
+    { teamId: teamId as number, number: 4, name: '田中' },
+    { teamId: teamId as number, number: 5, name: '鈴木' },
+    { teamId: teamId as number, number: 6, name: '山田' },
+    { teamId: teamId as number, number: 7, name: '佐藤' },
+    { teamId: teamId as number, number: 8, name: '高橋' },
+  ]);
+}

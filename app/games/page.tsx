@@ -19,19 +19,29 @@ interface OpponentPlayer {
   name: string;
 }
 
+interface TeamWithPlayerCount {
+  team: Team;
+  playerCount: number;
+}
+
 export default function GamesPage() {
   const router = useRouter();
   const [games, setGames] = useState<GameWithDetails[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
+  const [allTeams, setAllTeams] = useState<TeamWithPlayerCount[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // 新規試合作成フォーム
   const [selectedMyTeamId, setSelectedMyTeamId] = useState<number | null>(null);
-  const [opponentName, setOpponentName] = useState('');
   const [gameDate, setGameDate] = useState(
     new Date().toISOString().split('T')[0]
   );
+
+  // 対戦相手モード: 'existing'=登録済みから選択, 'new'=新規入力
+  const [opponentMode, setOpponentMode] = useState<'existing' | 'new'>('existing');
+  const [selectedOpponentTeamId, setSelectedOpponentTeamId] = useState<number | null>(null);
+  const [opponentName, setOpponentName] = useState('');
   const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>([
     { number: '', name: '' },
     { number: '', name: '' },
@@ -73,6 +83,7 @@ export default function GamesPage() {
 
       setGames(details);
 
+      // 自チーム一覧
       const teams = await db.teams
         .filter((t) => t.isMyTeam === true)
         .toArray();
@@ -80,12 +91,24 @@ export default function GamesPage() {
       if (teams.length > 0 && !selectedMyTeamId) {
         setSelectedMyTeamId(teams[0].id!);
       }
+
+      // 全チーム一覧（選手数付き）
+      const all = await db.teams.toArray();
+      const withCounts: TeamWithPlayerCount[] = [];
+      for (const t of all) {
+        const count = await db.players.where('teamId').equals(t.id!).count();
+        withCounts.push({ team: t, playerCount: count });
+      }
+      setAllTeams(withCounts);
+      if (withCounts.length > 0 && !selectedOpponentTeamId) {
+        setSelectedOpponentTeamId(withCounts[0].team.id!);
+      }
     } catch {
       // DB not ready
     } finally {
       setLoading(false);
     }
-  }, [selectedMyTeamId]);
+  }, [selectedMyTeamId, selectedOpponentTeamId]);
 
   useEffect(() => {
     loadGames();
@@ -106,34 +129,46 @@ export default function GamesPage() {
   }
 
   async function createGame() {
-    if (!selectedMyTeamId || !opponentName.trim()) return;
+    if (!selectedMyTeamId) return;
 
-    // 相手チームが最低5人いるか確認
-    const validPlayers = opponentPlayers.filter(
-      (p) => p.name.trim() && p.number.trim()
-    );
-    if (validPlayers.length < 5) {
-      alert('対戦相手の選手を最低5人登録してください');
-      return;
+    let opponentTeamId: number;
+
+    if (opponentMode === 'existing') {
+      // 登録済みチームから選択
+      if (!selectedOpponentTeamId) {
+        alert('対戦相手チームを選択してください');
+        return;
+      }
+      opponentTeamId = selectedOpponentTeamId;
+    } else {
+      // 新規チーム作成
+      if (!opponentName.trim()) {
+        alert('対戦相手チーム名を入力してください');
+        return;
+      }
+      const validPlayers = opponentPlayers.filter(
+        (p) => p.name.trim() && p.number.trim()
+      );
+      if (validPlayers.length < 5) {
+        alert('対戦相手の選手を最低5人登録してください');
+        return;
+      }
+
+      opponentTeamId = (await db.teams.add({
+        name: opponentName.trim(),
+        isMyTeam: false,
+        createdAt: new Date(),
+      })) as number;
+
+      for (const p of validPlayers) {
+        await db.players.add({
+          teamId: opponentTeamId,
+          number: parseInt(p.number),
+          name: p.name.trim(),
+        });
+      }
     }
 
-    // 対戦相手チーム作成
-    const opponentTeamId = await db.teams.add({
-      name: opponentName.trim(),
-      isMyTeam: false,
-      createdAt: new Date(),
-    });
-
-    // 対戦相手選手登録
-    for (const p of validPlayers) {
-      await db.players.add({
-        teamId: opponentTeamId,
-        number: parseInt(p.number),
-        name: p.name.trim(),
-      });
-    }
-
-    // 試合作成
     const gameId = await db.games.add({
       myTeamId: selectedMyTeamId,
       opponentTeamId,
@@ -217,55 +252,113 @@ export default function GamesPage() {
               />
             </div>
 
-            {/* 対戦相手名 */}
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">
-                対戦相手チーム名
-              </label>
-              <input
-                type="text"
-                value={opponentName}
-                onChange={(e) => setOpponentName(e.target.value)}
-                placeholder="相手チーム名を入力"
-                className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-
-            {/* 対戦相手の選手登録 */}
+            {/* 対戦相手選択モード */}
             <div>
               <label className="block text-sm text-gray-400 mb-2">
-                対戦相手の選手（最低5人）
+                対戦相手
               </label>
-              <div className="space-y-2">
-                {opponentPlayers.map((player, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input
-                      type="number"
-                      value={player.number}
-                      onChange={(e) =>
-                        updateOpponentPlayer(index, 'number', e.target.value)
-                      }
-                      placeholder="番号"
-                      className="w-24 bg-gray-700 text-white rounded-lg px-3 py-2 text-center placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                    <input
-                      type="text"
-                      value={player.name}
-                      onChange={(e) =>
-                        updateOpponentPlayer(index, 'name', e.target.value)
-                      }
-                      placeholder="選手名"
-                      className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                ))}
+              <div className="flex gap-2 mb-3">
+                <button
+                  onClick={() => setOpponentMode('existing')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+                    opponentMode === 'existing'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  登録済みチームから選ぶ
+                </button>
+                <button
+                  onClick={() => setOpponentMode('new')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+                    opponentMode === 'new'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  新しく入力する
+                </button>
               </div>
-              <button
-                onClick={addOpponentPlayerRow}
-                className="mt-2 text-sm text-orange-400 hover:text-orange-300"
-              >
-                ＋ 選手を追加
-              </button>
+
+              {opponentMode === 'existing' ? (
+                /* 登録済みチームから選択 */
+                <div>
+                  <select
+                    value={selectedOpponentTeamId || ''}
+                    onChange={(e) =>
+                      setSelectedOpponentTeamId(Number(e.target.value))
+                    }
+                    className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {allTeams.map(({ team, playerCount }) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}（{playerCount}人）
+                        {team.isMyTeam ? ' ★' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {allTeams.length === 0 && (
+                    <p className="text-sm text-gray-400 mt-2">
+                      登録済みのチームがありません。「新しく入力する」から作成してください。
+                    </p>
+                  )}
+                </div>
+              ) : (
+                /* 新規チーム入力 */
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={opponentName}
+                    onChange={(e) => setOpponentName(e.target.value)}
+                    placeholder="相手チーム名を入力"
+                    className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">
+                      対戦相手の選手（最低5人）
+                    </label>
+                    <div className="space-y-2">
+                      {opponentPlayers.map((player, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="number"
+                            value={player.number}
+                            onChange={(e) =>
+                              updateOpponentPlayer(
+                                index,
+                                'number',
+                                e.target.value
+                              )
+                            }
+                            placeholder="番号"
+                            className="w-24 bg-gray-700 text-white rounded-lg px-3 py-2 text-center placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                          <input
+                            type="text"
+                            value={player.name}
+                            onChange={(e) =>
+                              updateOpponentPlayer(
+                                index,
+                                'name',
+                                e.target.value
+                              )
+                            }
+                            placeholder="選手名"
+                            className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={addOpponentPlayerRow}
+                      className="mt-2 text-sm text-orange-400 hover:text-orange-300"
+                    >
+                      ＋ 選手を追加
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button

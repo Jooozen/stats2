@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { db, type Game, type Team } from '@/lib/db';
+import { db, type Game, type Team, ensureExampleData } from '@/lib/db';
 import { calcTeamScore } from '@/lib/stats';
 import type { StatEvent } from '@/lib/db';
 
@@ -25,6 +25,7 @@ export default function HomePage() {
 
   async function loadData() {
     try {
+      await ensureExampleData();
       const myTeams = await db.teams.where('isMyTeam').equals(1).toArray();
       setHasTeams(myTeams.length > 0);
 
