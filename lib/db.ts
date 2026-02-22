@@ -25,6 +25,12 @@ export interface Game {
   status: 'live' | 'finished';
   currentQuarter: number;
   createdAt: Date;
+  // タイマー状態（永続化）
+  timerSeconds?: number;     // 蓄積秒数（一時停止時に保存）
+  timerStartedAt?: number;   // Date.now() タイマー開始時刻（実行中のみ）
+  timerRunning?: boolean;    // タイマー実行中フラグ
+  // 出場選手管理（永続化）
+  onCourtPlayerIds?: number[];
 }
 
 // スタッツイベント
@@ -40,7 +46,9 @@ export type StatAction =
   | 'stl'
   | 'blk'
   | 'to'
-  | 'foul';
+  | 'foul'
+  | 'subIn'
+  | 'subOut';
 
 export interface StatEvent {
   id?: number;
@@ -50,6 +58,7 @@ export interface StatEvent {
   quarter: number;
   action: StatAction;
   timestamp: Date;
+  gameTime?: number; // ゲームクロック（秒）
 }
 
 export class BasketballDB extends Dexie {
