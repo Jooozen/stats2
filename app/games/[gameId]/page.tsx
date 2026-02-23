@@ -28,20 +28,37 @@ const STAT_ROW2: { action: StatAction; label: string; category: 'shoot' | 'other
 ];
 const ALL_STAT_BUTTONS = [...STAT_ROW1, ...STAT_ROW2];
 
-// コート上のシュートゾーン（SVG座標）バスケットは上側
-const COURT_ZONES: { id: ShotZone; label: string; is3pt: boolean; x: number; y: number; w: number; h: number }[] = [
-  // 上段: ベースライン付近
-  { id: 'threeLeftCorner', label: '左C', is3pt: true, x: 4, y: 4, w: 74, h: 100 },
-  { id: 'paint', label: 'ペイント', is3pt: false, x: 78, y: 4, w: 144, h: 100 },
-  { id: 'threeRightCorner', label: '右C', is3pt: true, x: 222, y: 4, w: 74, h: 100 },
-  // 中段: ミッドレンジ
-  { id: 'midLeft', label: 'M左', is3pt: false, x: 4, y: 104, w: 74, h: 70 },
-  { id: 'midCenter', label: 'M中央', is3pt: false, x: 78, y: 104, w: 144, h: 70 },
-  { id: 'midRight', label: 'M右', is3pt: false, x: 222, y: 104, w: 74, h: 70 },
-  // 下段: 3ポイント
-  { id: 'threeLeftWing', label: '左W', is3pt: true, x: 4, y: 174, w: 74, h: 102 },
-  { id: 'threeTop', label: 'トップ', is3pt: true, x: 78, y: 174, w: 144, h: 102 },
-  { id: 'threeRightWing', label: '右W', is3pt: true, x: 222, y: 174, w: 74, h: 102 },
+// コート上のシュートゾーン（SVGポリゴン座標）バスケットは上側
+// 3Pラインのアーク（ベジェ曲線の近似点）に沿ってゾーンを分割
+// アーク: (32,58)→(34,78)→(39,95)→(57,124)→(83,144)→(98,153)→(150,161)→(202,153)→(217,144)→(243,124)→(261,95)→(266,78)→(268,58)
+const COURT_ZONES: { id: ShotZone; label: string; is3pt: boolean; points: string; labelX: number; labelY: number }[] = [
+  // ペイント（2PT）- ゴール付近
+  { id: 'paint', label: 'ペイント', is3pt: false,
+    points: '88,4 212,4 212,104 88,104', labelX: 150, labelY: 54 },
+  // 3P左コーナー - ベースライン左、3Pライン外側
+  { id: 'threeLeftCorner', label: '左C', is3pt: true,
+    points: '4,4 32,4 32,58 34,78 39,95 4,95', labelX: 19, labelY: 48 },
+  // 3P右コーナー - ベースライン右、3Pライン外側
+  { id: 'threeRightCorner', label: '右C', is3pt: true,
+    points: '268,4 296,4 296,95 261,95 266,78 268,58', labelX: 281, labelY: 48 },
+  // ミドル左（2PT）- 3Pライン内側、ペイント左
+  { id: 'midLeft', label: 'M左', is3pt: false,
+    points: '32,4 88,4 88,104 83,144 57,124 39,95 34,78 32,58', labelX: 58, labelY: 70 },
+  // ミドル右（2PT）- 3Pライン内側、ペイント右
+  { id: 'midRight', label: 'M右', is3pt: false,
+    points: '212,4 268,4 268,58 266,78 261,95 243,124 217,144 212,104', labelX: 242, labelY: 70 },
+  // ミドル中央（2PT）- フリースロー下、3Pアーク上
+  { id: 'midCenter', label: 'M中央', is3pt: false,
+    points: '88,104 212,104 217,144 202,153 150,161 98,153 83,144', labelX: 150, labelY: 130 },
+  // 3P左ウイング - 3Pアーク外側左
+  { id: 'threeLeftWing', label: '左W', is3pt: true,
+    points: '4,95 39,95 57,124 83,144 98,153 100,276 4,276', labelX: 48, labelY: 190 },
+  // 3Pトップ - 3Pアーク外側中央
+  { id: 'threeTop', label: 'トップ', is3pt: true,
+    points: '100,153 115,157 150,161 185,157 200,153 200,276 100,276', labelX: 150, labelY: 218 },
+  // 3P右ウイング - 3Pアーク外側右
+  { id: 'threeRightWing', label: '右W', is3pt: true,
+    points: '261,95 296,95 296,276 200,276 200,153 202,153 217,144 243,124', labelX: 252, labelY: 190 },
 ];
 
 function formatTime(totalSeconds: number): string {
@@ -689,15 +706,14 @@ export default function GameStatsPage() {
                 const isSelected = selectedZone === zone.id;
                 return (
                   <g key={zone.id} onClick={() => isActive && handleZoneTap(zone.id)} style={{ cursor: isActive ? 'pointer' : 'default' }}>
-                    <rect
-                      x={zone.x} y={zone.y} width={zone.w} height={zone.h}
+                    <polygon
+                      points={zone.points}
                       fill={isSelected ? 'rgba(255,255,255,0.35)' : isActive ? 'rgba(255,255,255,0.06)' : 'transparent'}
                       stroke={isActive ? 'rgba(255,255,255,0.2)' : 'transparent'}
                       strokeWidth="0.5"
-                      rx="2"
                     />
                     <text
-                      x={zone.x + zone.w / 2} y={zone.y + zone.h / 2 - (st ? 6 : 0)}
+                      x={zone.labelX} y={zone.labelY - (st ? 6 : 0)}
                       textAnchor="middle" dominantBaseline="central"
                       fill={isActive ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)'}
                       fontSize="9" fontWeight="bold"
@@ -706,7 +722,7 @@ export default function GameStatsPage() {
                     </text>
                     {st && st.attempts > 0 && (
                       <text
-                        x={zone.x + zone.w / 2} y={zone.y + zone.h / 2 + 10}
+                        x={zone.labelX} y={zone.labelY + 10}
                         textAnchor="middle" dominantBaseline="central"
                         fill={st.makes / st.attempts >= 0.5 ? '#4ade80' : '#f87171'}
                         fontSize="10" fontWeight="bold"
