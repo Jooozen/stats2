@@ -221,7 +221,7 @@ export default function TeamsPage() {
                             onClick={() => openShotChart(player)}
                             className="text-sm text-sky-400 hover:text-sky-300 px-2 py-1"
                           >
-                            エリア別シュート率
+                            詳細
                           </button>
                           <button
                             onClick={() => startEditPlayer(player)}
