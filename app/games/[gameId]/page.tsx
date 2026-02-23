@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db, type Game, type Team, type Player, type StatEvent, type StatAction } from '@/lib/db';
+import { db, type Game, type Team, type Player, type StatEvent, type StatAction, type ShotZone, SHOT_ZONE_INFO } from '@/lib/db';
 import { calcTeamScore, calcPlayerStats } from '@/lib/stats';
 import { useGameStore } from '@/lib/store';
 
@@ -27,6 +27,22 @@ const STAT_ROW2: { action: StatAction; label: string; category: 'shoot' | 'other
   { action: 'foul', label: 'FOUL', category: 'other' },
 ];
 const ALL_STAT_BUTTONS = [...STAT_ROW1, ...STAT_ROW2];
+
+// コート上のシュートゾーン（SVG座標）バスケットは上側
+const COURT_ZONES: { id: ShotZone; label: string; is3pt: boolean; x: number; y: number; w: number; h: number }[] = [
+  // 上段: ベースライン付近
+  { id: 'threeLeftCorner', label: '左C', is3pt: true, x: 4, y: 4, w: 74, h: 100 },
+  { id: 'paint', label: 'ペイント', is3pt: false, x: 78, y: 4, w: 144, h: 100 },
+  { id: 'threeRightCorner', label: '右C', is3pt: true, x: 222, y: 4, w: 74, h: 100 },
+  // 中段: ミッドレンジ
+  { id: 'midLeft', label: 'M左', is3pt: false, x: 4, y: 104, w: 74, h: 70 },
+  { id: 'midCenter', label: 'M中央', is3pt: false, x: 78, y: 104, w: 144, h: 70 },
+  { id: 'midRight', label: 'M右', is3pt: false, x: 222, y: 104, w: 74, h: 70 },
+  // 下段: 3ポイント
+  { id: 'threeLeftWing', label: '左W', is3pt: true, x: 4, y: 174, w: 74, h: 102 },
+  { id: 'threeTop', label: 'トップ', is3pt: true, x: 78, y: 174, w: 144, h: 102 },
+  { id: 'threeRightWing', label: '右W', is3pt: true, x: 222, y: 174, w: 74, h: 102 },
+];
 
 function formatTime(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -84,6 +100,9 @@ export default function GameStatsPage() {
   const [showMemberChange, setShowMemberChange] = useState(false);
   const [memberTab, setMemberTab] = useState<'my' | 'opp'>('opp');
   const [showTimeline, setShowTimeline] = useState(false);
+
+  // コートゾーン選択
+  const [selectedZone, setSelectedZone] = useState<ShotZone | null>(null);
 
   const {
     selectedPlayerId,
@@ -283,6 +302,48 @@ export default function GameStatsPage() {
     await undoLast();
     await reloadEvents();
     showFeedback(`↩ #${p?.number} ${p?.name} ${btn?.label || lastEvent.action} を取消`);
+  }
+
+  // コートゾーンタップ → 成功/失敗選択
+  function handleZoneTap(zoneId: ShotZone) {
+    if (!selectedPlayerId || !selectedTeamId) {
+      showFeedback('選手を選択してください');
+      return;
+    }
+    setSelectedZone(zoneId);
+  }
+
+  async function handleCourtShot(made: boolean) {
+    if (!selectedPlayerId || !selectedTeamId || !selectedZone) return;
+    const zone = COURT_ZONES.find(z => z.id === selectedZone);
+    if (!zone) return;
+
+    const action: StatAction = zone.is3pt
+      ? (made ? 'pts3' : 'miss3')
+      : (made ? 'pts2' : 'miss2');
+
+    const gt = getGameTime();
+    await recordStat(gameId, quarter, action, gt, selectedZone);
+    await reloadEvents();
+
+    const zoneInfo = SHOT_ZONE_INFO[selectedZone];
+    showFeedback(
+      `#${selectedPlayer?.number} ${selectedPlayer?.name} → ${zoneInfo.label}${zone.is3pt ? '3P' : '2P'} ${made ? '成功!' : '失敗'} [${formatTime(gt)}]`
+    );
+    setSelectedZone(null);
+  }
+
+  // ゾーン別シュート集計（選択中の選手用）
+  function getZoneStatsForPlayer(playerId: number): Record<string, { makes: number; attempts: number }> {
+    const stats: Record<string, { makes: number; attempts: number }> = {};
+    for (const e of events) {
+      if (e.playerId !== playerId || !e.zone) continue;
+      if (!['pts2', 'pts3', 'miss2', 'miss3'].includes(e.action)) continue;
+      if (!stats[e.zone]) stats[e.zone] = { makes: 0, attempts: 0 };
+      stats[e.zone].attempts++;
+      if (e.action === 'pts2' || e.action === 'pts3') stats[e.zone].makes++;
+    }
+    return stats;
   }
 
   async function changeQuarter(q: number) {
@@ -520,65 +581,176 @@ export default function GameStatsPage() {
             : '↓ 選手をタップ'}
       </div>
 
-      {/* 選手リスト（左右分割） */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        <div className="flex-1 border-r border-gray-700 overflow-y-auto">
-          <div className="px-0.5 py-0.5">
-            <h3 className="text-center text-[10px] text-orange-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
-              {myTeam?.name}
-            </h3>
-            <div className="space-y-px">
-              {myPlayers.map((player) => (
-                <PlayerRow
-                  key={player.id}
-                  player={player}
-                  teamId={game.myTeamId}
-                  isSelected={selectedPlayerId === player.id && selectedSide === 'my'}
-                  isOnCourt={onCourtIds.has(player.id!)}
-                  pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
-                  fouls={getPlayerFouls(player.id!)}
-                  teamColor="orange"
-                  onSelect={() => {
-                    if (selectedPlayerId === player.id && selectedSide === 'my') {
-                      clearSelection(); setSelectedSide(null);
-                    } else {
-                      selectPlayer(player.id!, game.myTeamId); setSelectedSide('my');
-                    }
-                  }}
-                  onToggleCourt={() => toggleOnCourt(player.id!, game.myTeamId)}
-                />
-              ))}
+      {/* 選手リスト + コート図 */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        {/* 選手リスト（左右分割） */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          <div className="flex-1 border-r border-gray-700 overflow-y-auto">
+            <div className="px-0.5 py-0.5">
+              <h3 className="text-center text-[10px] text-orange-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
+                {myTeam?.name}
+              </h3>
+              <div className="space-y-px">
+                {myPlayers.map((player) => (
+                  <PlayerRow
+                    key={player.id}
+                    player={player}
+                    teamId={game.myTeamId}
+                    isSelected={selectedPlayerId === player.id && selectedSide === 'my'}
+                    isOnCourt={onCourtIds.has(player.id!)}
+                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                    fouls={getPlayerFouls(player.id!)}
+                    teamColor="orange"
+                    onSelect={() => {
+                      if (selectedPlayerId === player.id && selectedSide === 'my') {
+                        clearSelection(); setSelectedSide(null);
+                      } else {
+                        selectPlayer(player.id!, game.myTeamId); setSelectedSide('my');
+                      }
+                    }}
+                    onToggleCourt={() => toggleOnCourt(player.id!, game.myTeamId)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-0.5 py-0.5">
+              <h3 className="text-center text-[10px] text-blue-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
+                {opponentTeam?.name}
+              </h3>
+              <div className="space-y-px">
+                {opponentPlayers.map((player) => (
+                  <PlayerRow
+                    key={player.id}
+                    player={player}
+                    teamId={game.opponentTeamId}
+                    isSelected={selectedPlayerId === player.id && selectedSide === 'opp'}
+                    isOnCourt={onCourtIds.has(player.id!)}
+                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                    fouls={getPlayerFouls(player.id!)}
+                    teamColor="blue"
+                    onSelect={() => {
+                      if (selectedPlayerId === player.id && selectedSide === 'opp') {
+                        clearSelection(); setSelectedSide(null);
+                      } else {
+                        selectPlayer(player.id!, game.opponentTeamId); setSelectedSide('opp');
+                      }
+                    }}
+                    onToggleCourt={() => toggleOnCourt(player.id!, game.opponentTeamId)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-0.5 py-0.5">
-            <h3 className="text-center text-[10px] text-blue-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
-              {opponentTeam?.name}
-            </h3>
-            <div className="space-y-px">
-              {opponentPlayers.map((player) => (
-                <PlayerRow
-                  key={player.id}
-                  player={player}
-                  teamId={game.opponentTeamId}
-                  isSelected={selectedPlayerId === player.id && selectedSide === 'opp'}
-                  isOnCourt={onCourtIds.has(player.id!)}
-                  pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
-                  fouls={getPlayerFouls(player.id!)}
-                  teamColor="blue"
-                  onSelect={() => {
-                    if (selectedPlayerId === player.id && selectedSide === 'opp') {
-                      clearSelection(); setSelectedSide(null);
-                    } else {
-                      selectPlayer(player.id!, game.opponentTeamId); setSelectedSide('opp');
-                    }
-                  }}
-                  onToggleCourt={() => toggleOnCourt(player.id!, game.opponentTeamId)}
-                />
+
+        {/* コート図（シュートゾーン選択） */}
+        <div className="flex-shrink-0 border-t border-gray-700 relative">
+          <div className="flex justify-center px-2 py-1">
+            <svg viewBox="0 0 300 280" className="w-full max-w-[340px]" style={{ maxHeight: '28vh' }}>
+              {/* コート背景 */}
+              <rect x="0" y="0" width="300" height="280" fill="#1a472a" rx="3" />
+              {/* コート外枠 */}
+              <rect x="4" y="4" width="292" height="272" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+              {/* バックボード */}
+              <line x1="132" y1="16" x2="168" y2="16" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
+              {/* リム */}
+              <circle cx="150" cy="24" r="7" fill="none" stroke="#f97316" strokeWidth="1.5" />
+              <line x1="150" y1="17" x2="150" y2="16" stroke="rgba(255,255,255,0.5)" strokeWidth="1" />
+              {/* 制限エリア */}
+              <path d="M 132 4 L 132 28 A 18 18 0 0 0 168 28 L 168 4" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+              {/* ペイントエリア */}
+              <rect x="88" y="4" width="124" height="100" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+              {/* レーンマーク */}
+              {[30, 45, 60, 75].map(y => (
+                <g key={y}>
+                  <line x1="84" y1={y} x2="91" y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+                  <line x1="209" y1={y} x2="216" y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+                </g>
               ))}
-            </div>
+              {/* フリースローライン */}
+              <line x1="88" y1="104" x2="212" y2="104" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+              {/* フリースロー半円（下方向=バスケットから離れる） */}
+              <path d="M 118 104 A 32 32 0 0 1 182 104" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+              {/* フリースロー半円（上方向=ペイント内、破線） */}
+              <path d="M 118 104 A 32 32 0 0 0 182 104" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeDasharray="4,4" />
+              {/* 3ポイントライン */}
+              <path d="M 32 4 L 32 58 C 32 195, 268 195, 268 58 L 268 4" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+              {/* センターサークル（ハーフコートライン） */}
+              <line x1="4" y1="276" x2="296" y2="276" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
+              <circle cx="150" cy="276" r="28" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
+
+              {/* クリック可能なゾーンオーバーレイ */}
+              {COURT_ZONES.map((zone) => {
+                const zoneStats = selectedPlayerId ? getZoneStatsForPlayer(selectedPlayerId) : {};
+                const st = zoneStats[zone.id];
+                const isActive = hasSelection;
+                const isSelected = selectedZone === zone.id;
+                return (
+                  <g key={zone.id} onClick={() => isActive && handleZoneTap(zone.id)} style={{ cursor: isActive ? 'pointer' : 'default' }}>
+                    <rect
+                      x={zone.x} y={zone.y} width={zone.w} height={zone.h}
+                      fill={isSelected ? 'rgba(255,255,255,0.35)' : isActive ? 'rgba(255,255,255,0.06)' : 'transparent'}
+                      stroke={isActive ? 'rgba(255,255,255,0.2)' : 'transparent'}
+                      strokeWidth="0.5"
+                      rx="2"
+                    />
+                    <text
+                      x={zone.x + zone.w / 2} y={zone.y + zone.h / 2 - (st ? 6 : 0)}
+                      textAnchor="middle" dominantBaseline="central"
+                      fill={isActive ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)'}
+                      fontSize="9" fontWeight="bold"
+                    >
+                      {zone.label}{zone.is3pt ? ' 3P' : ' 2P'}
+                    </text>
+                    {st && st.attempts > 0 && (
+                      <text
+                        x={zone.x + zone.w / 2} y={zone.y + zone.h / 2 + 10}
+                        textAnchor="middle" dominantBaseline="central"
+                        fill={st.makes / st.attempts >= 0.5 ? '#4ade80' : '#f87171'}
+                        fontSize="10" fontWeight="bold"
+                      >
+                        {st.makes}/{st.attempts}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
           </div>
+
+          {/* 成功/失敗 選択オーバーレイ */}
+          {selectedZone && (() => {
+            const zoneInfo = SHOT_ZONE_INFO[selectedZone];
+            return (
+              <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-2">
+                <p className="text-white text-sm font-bold">
+                  {zoneInfo.label}（{zoneInfo.is3pt ? '3P' : '2P'}）
+                </p>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => handleCourtShot(true)}
+                    className="px-8 py-3 bg-green-600 active:bg-green-700 text-white font-bold rounded-xl text-lg transition-colors"
+                  >
+                    成功
+                  </button>
+                  <button
+                    onClick={() => handleCourtShot(false)}
+                    className="px-8 py-3 bg-red-600 active:bg-red-700 text-white font-bold rounded-xl text-lg transition-colors"
+                  >
+                    失敗
+                  </button>
+                </div>
+                <button
+                  onClick={() => setSelectedZone(null)}
+                  className="text-gray-400 text-xs mt-1"
+                >
+                  キャンセル
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -1140,9 +1312,16 @@ function TimelinePanel({
                       <span className="font-mono text-gray-400 mr-1">#{player?.number}</span>
                       {player?.name}
                     </span>
-                    {/* アクション */}
-                    <span className={`text-sm font-bold ${getActionColor(ev.action)}`}>
-                      {ACTION_LABEL_MAP[ev.action] || ev.action}
+                    {/* アクション + ゾーン */}
+                    <span className="flex items-center gap-1">
+                      {ev.zone && (
+                        <span className="text-[9px] text-gray-500">
+                          {SHOT_ZONE_INFO[ev.zone as ShotZone]?.label || ev.zone}
+                        </span>
+                      )}
+                      <span className={`text-sm font-bold ${getActionColor(ev.action)}`}>
+                        {ACTION_LABEL_MAP[ev.action] || ev.action}
+                      </span>
                     </span>
                   </div>
                 </button>

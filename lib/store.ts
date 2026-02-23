@@ -12,7 +12,7 @@ interface GameState {
   // アクション
   selectPlayer: (playerId: number, teamId: number) => void;
   clearSelection: () => void;
-  recordStat: (gameId: number, quarter: number, action: StatAction, gameTime?: number) => Promise<void>;
+  recordStat: (gameId: number, quarter: number, action: StatAction, gameTime?: number, zone?: string) => Promise<void>;
   undoLast: () => Promise<void>;
 }
 
@@ -29,7 +29,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ selectedPlayerId: null, selectedTeamId: null });
   },
 
-  recordStat: async (gameId: number, quarter: number, action: StatAction, gameTime?: number) => {
+  recordStat: async (gameId: number, quarter: number, action: StatAction, gameTime?: number, zone?: string) => {
     const { selectedPlayerId, selectedTeamId } = get();
     if (!selectedPlayerId || !selectedTeamId) return;
 
@@ -41,6 +41,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       action,
       timestamp: new Date(),
       gameTime,
+      zone,
     };
 
     const id = await db.statEvents.add(event);

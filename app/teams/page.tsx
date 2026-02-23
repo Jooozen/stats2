@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { db, type Team, type Player } from '@/lib/db';
+import { db, type Team, type Player, type StatEvent, type ShotZone, SHOT_ZONE_INFO } from '@/lib/db';
 
 export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -13,6 +13,28 @@ export default function TeamsPage() {
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editPlayerName, setEditPlayerName] = useState('');
   const [editPlayerNumber, setEditPlayerNumber] = useState('');
+
+  // エリア別シュート率モーダル
+  const [shotChartPlayer, setShotChartPlayer] = useState<Player | null>(null);
+  const [shotChartData, setShotChartData] = useState<Record<string, { makes: number; attempts: number }>>({});
+
+  async function openShotChart(player: Player) {
+    const events: StatEvent[] = await db.statEvents
+      .where('playerId')
+      .equals(player.id!)
+      .toArray();
+
+    const zoneStats: Record<string, { makes: number; attempts: number }> = {};
+    for (const e of events) {
+      if (!e.zone) continue;
+      if (!['pts2', 'pts3', 'miss2', 'miss3'].includes(e.action)) continue;
+      if (!zoneStats[e.zone]) zoneStats[e.zone] = { makes: 0, attempts: 0 };
+      zoneStats[e.zone].attempts++;
+      if (e.action === 'pts2' || e.action === 'pts3') zoneStats[e.zone].makes++;
+    }
+    setShotChartData(zoneStats);
+    setShotChartPlayer(player);
+  }
 
   const loadTeams = useCallback(async () => {
     try {
@@ -196,6 +218,12 @@ export default function TeamsPage() {
                         </span>
                         <div className="flex gap-2">
                           <button
+                            onClick={() => openShotChart(player)}
+                            className="text-sm text-sky-400 hover:text-sky-300 px-2 py-1"
+                          >
+                            エリア別シュート率
+                          </button>
+                          <button
                             onClick={() => startEditPlayer(player)}
                             className="text-sm text-gray-300 hover:text-white px-2 py-1"
                           >
@@ -242,6 +270,90 @@ export default function TeamsPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+      {/* エリア別シュート率モーダル */}
+      {shotChartPlayer && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex flex-col">
+          <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
+            <div>
+              <h2 className="text-base font-bold text-white">エリア別シュート率</h2>
+              <p className="text-sm text-gray-400">
+                <span className="text-orange-400 font-mono font-bold mr-1">#{shotChartPlayer.number}</span>
+                {shotChartPlayer.name}
+              </p>
+            </div>
+            <button
+              onClick={() => setShotChartPlayer(null)}
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold rounded transition-colors"
+            >
+              閉じる
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* 全体サマリー */}
+            {(() => {
+              const totalMakes = Object.values(shotChartData).reduce((a, b) => a + b.makes, 0);
+              const totalAttempts = Object.values(shotChartData).reduce((a, b) => a + b.attempts, 0);
+              const totalPct = totalAttempts > 0 ? Math.round((totalMakes / totalAttempts) * 100) : 0;
+              return totalAttempts > 0 ? (
+                <div className="bg-gray-800 rounded-xl p-4 mb-4 text-center">
+                  <p className="text-xs text-gray-400 mb-1">全エリア合計</p>
+                  <p className="text-2xl font-bold text-white">{totalPct}%</p>
+                  <p className="text-sm text-gray-400">{totalMakes}/{totalAttempts}（成功/試投）</p>
+                </div>
+              ) : (
+                <div className="bg-gray-800 rounded-xl p-8 mb-4 text-center">
+                  <p className="text-gray-400">エリア別のシュートデータがまだありません</p>
+                  <p className="text-xs text-gray-500 mt-2">試合中にコート図からシュートを記録するとデータが蓄積されます</p>
+                </div>
+              );
+            })()}
+
+            {/* エリア別リスト */}
+            <div className="space-y-2">
+              {(Object.keys(SHOT_ZONE_INFO) as ShotZone[]).map((zoneId) => {
+                const info = SHOT_ZONE_INFO[zoneId];
+                const st = shotChartData[zoneId];
+                const makes = st?.makes || 0;
+                const attempts = st?.attempts || 0;
+                const misses = attempts - makes;
+                const pct = attempts > 0 ? Math.round((makes / attempts) * 100) : null;
+
+                return (
+                  <div key={zoneId} className="bg-gray-800 rounded-lg px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        info.is3pt ? 'bg-purple-600/30 text-purple-400' : 'bg-sky-600/30 text-sky-400'
+                      }`}>
+                        {info.is3pt ? '3P' : '2P'}
+                      </span>
+                      <span className="text-sm text-white font-medium">{info.label}</span>
+                    </div>
+                    {attempts > 0 ? (
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className="text-xs text-gray-400">
+                            成功 <span className="text-green-400 font-bold">{makes}</span>
+                            {' / '}失敗 <span className="text-red-400 font-bold">{misses}</span>
+                            {' / '}試投 <span className="text-white font-bold">{attempts}</span>
+                          </span>
+                        </div>
+                        <div className={`text-lg font-bold min-w-[48px] text-right ${
+                          pct !== null && pct >= 50 ? 'text-green-400' : pct !== null && pct >= 30 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {pct}%
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-600">データなし</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>

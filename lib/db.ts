@@ -61,7 +61,25 @@ export interface StatEvent {
   action: StatAction;
   timestamp: Date;
   gameTime?: number; // ゲームクロック（秒）
+  zone?: string; // シュートエリア
 }
+
+// シュートゾーン定義
+export type ShotZone =
+  | 'paint' | 'midLeft' | 'midCenter' | 'midRight'
+  | 'threeLeftCorner' | 'threeLeftWing' | 'threeTop' | 'threeRightWing' | 'threeRightCorner';
+
+export const SHOT_ZONE_INFO: Record<ShotZone, { label: string; is3pt: boolean }> = {
+  paint: { label: 'ペイント', is3pt: false },
+  midLeft: { label: 'ミドル左', is3pt: false },
+  midCenter: { label: 'ミドル中央', is3pt: false },
+  midRight: { label: 'ミドル右', is3pt: false },
+  threeLeftCorner: { label: '左コーナー', is3pt: true },
+  threeLeftWing: { label: '左ウイング', is3pt: true },
+  threeTop: { label: 'トップ', is3pt: true },
+  threeRightWing: { label: '右ウイング', is3pt: true },
+  threeRightCorner: { label: '右コーナー', is3pt: true },
+};
 
 export class BasketballDB extends Dexie {
   teams!: Table<Team>;
@@ -76,6 +94,9 @@ export class BasketballDB extends Dexie {
       players: '++id, teamId, number, name',
       games: '++id, myTeamId, opponentTeamId, date, status, createdAt',
       statEvents: '++id, gameId, playerId, teamId, quarter, action, timestamp',
+    });
+    this.version(2).stores({
+      statEvents: '++id, gameId, playerId, teamId, quarter, action, timestamp, zone',
     });
   }
 }
