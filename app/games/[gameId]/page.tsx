@@ -8,26 +8,24 @@ import { useGameStore } from '@/lib/store';
 
 const QUARTER_LABELS = ['Q1', 'Q2', 'Q3', 'Q4', 'OT'];
 
-interface ActionButton {
-  action: StatAction;
-  label: string;
-  group: 'score' | 'stat' | 'miss';
-}
-
-const ACTION_BUTTONS: ActionButton[] = [
-  { action: 'pts2', label: '2P', group: 'score' },
-  { action: 'pts3', label: '3P', group: 'score' },
-  { action: 'ft', label: 'FT', group: 'score' },
-  { action: 'reb', label: 'REB', group: 'stat' },
-  { action: 'ast', label: 'AST', group: 'stat' },
-  { action: 'stl', label: 'STL', group: 'stat' },
-  { action: 'blk', label: 'BLK', group: 'stat' },
-  { action: 'to', label: 'TO', group: 'stat' },
-  { action: 'foul', label: 'FOUL', group: 'stat' },
-  { action: 'miss2', label: 'ミス(2P)', group: 'miss' },
-  { action: 'miss3', label: 'ミス(3P)', group: 'miss' },
-  { action: 'missFt', label: 'ミス(FT)', group: 'miss' },
+// 6列 x 2行のスタッツボタン配置
+const STAT_ROW1: { action: StatAction; label: string }[] = [
+  { action: 'pts2', label: '2P' },
+  { action: 'pts3', label: '3P' },
+  { action: 'ft', label: 'FT' },
+  { action: 'reb', label: 'REB' },
+  { action: 'ast', label: 'AST' },
+  { action: 'stl', label: 'STL' },
 ];
+const STAT_ROW2: { action: StatAction; label: string }[] = [
+  { action: 'miss2', label: 'ミス2P' },
+  { action: 'miss3', label: 'ミス3P' },
+  { action: 'missFt', label: 'ミスFT' },
+  { action: 'blk', label: 'BLK' },
+  { action: 'to', label: 'TO' },
+  { action: 'foul', label: 'FOUL' },
+];
+const ALL_STAT_BUTTONS = [...STAT_ROW1, ...STAT_ROW2];
 
 function formatTime(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -265,7 +263,7 @@ export default function GameStatsPage() {
     await recordStat(gameId, quarter, action, gt);
     await reloadEvents();
 
-    const btn = ACTION_BUTTONS.find((b) => b.action === action);
+    const btn = ALL_STAT_BUTTONS.find((b) => b.action === action);
     showFeedback(
       `#${selectedPlayer?.number} ${selectedPlayer?.name} → ${btn?.label}  [${formatTime(gt)}]`
     );
@@ -279,7 +277,7 @@ export default function GameStatsPage() {
     const p = [...myPlayers, ...opponentPlayers].find(
       (pl) => pl.id === lastEvent.playerId
     );
-    const btn = ACTION_BUTTONS.find((b) => b.action === lastEvent.action);
+    const btn = ALL_STAT_BUTTONS.find((b) => b.action === lastEvent.action);
     await undoLast();
     await reloadEvents();
     showFeedback(`↩ #${p?.number} ${p?.name} ${btn?.label || lastEvent.action} を取消`);
@@ -374,29 +372,53 @@ export default function GameStatsPage() {
 
   const hasSelection = selectedPlayerId !== null && selectedTeamId !== null;
 
+  // ファール集計
+  function getPlayerFouls(playerId: number): number {
+    return events.filter((e) => e.playerId === playerId && e.action === 'foul').length;
+  }
+  function getTeamQuarterFouls(teamId: number): number {
+    return events.filter((e) => e.teamId === teamId && e.action === 'foul' && e.quarter === quarter).length;
+  }
+  const myTeamQFouls = getTeamQuarterFouls(game.myTeamId);
+  const oppTeamQFouls = getTeamQuarterFouls(game.opponentTeamId);
+
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-900 overflow-hidden select-none">
       {/* スコアボード */}
-      <div className="bg-gray-800 border-b border-gray-700 px-2 py-1">
-        {/* 1行目: チーム名 + スコア */}
-        <div className="flex items-center justify-center gap-1">
-          <span className="text-xs font-bold text-orange-400 truncate max-w-[80px]">
-            {myTeam?.name || '自チーム'}
-          </span>
-          <span className="text-2xl font-bold tabular-nums text-white mx-1">{myScore}</span>
-          <span className="text-gray-500">-</span>
-          <span className="text-2xl font-bold tabular-nums text-white mx-1">{opponentScore}</span>
-          <span className="text-xs font-bold text-blue-400 truncate max-w-[80px]">
-            {opponentTeam?.name || '相手'}
-          </span>
+      <div className="bg-gray-800 border-b border-gray-700 px-3 py-1.5">
+        {/* 1行目: チーム名 + スコア + チームファール */}
+        <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-bold text-orange-400 truncate max-w-[80px]">
+              {myTeam?.name || '自チーム'}
+            </span>
+            {myTeamQFouls > 0 && (
+              <span className={`text-[10px] font-bold px-1 rounded ${myTeamQFouls >= 5 ? 'bg-red-600 text-white' : 'bg-gray-700 text-yellow-400'}`}>
+                F{myTeamQFouls}
+              </span>
+            )}
+          </div>
+          <span className="text-3xl font-bold tabular-nums text-white">{myScore}</span>
+          <span className="text-lg text-gray-500">-</span>
+          <span className="text-3xl font-bold tabular-nums text-white">{opponentScore}</span>
+          <div className="flex items-center gap-1">
+            {oppTeamQFouls > 0 && (
+              <span className={`text-[10px] font-bold px-1 rounded ${oppTeamQFouls >= 5 ? 'bg-red-600 text-white' : 'bg-gray-700 text-yellow-400'}`}>
+                F{oppTeamQFouls}
+              </span>
+            )}
+            <span className="text-sm font-bold text-blue-400 truncate max-w-[80px]">
+              {opponentTeam?.name || '相手'}
+            </span>
+          </div>
         </div>
-        {/* 2行目: Q + タイマー + ボタン */}
-        <div className="flex items-center justify-center gap-1 mt-0.5">
+        {/* 2行目: Q選択 + タイマー */}
+        <div className="flex items-center justify-center gap-1.5 mt-1">
           {QUARTER_LABELS.map((label, i) => (
             <button
               key={label}
               onClick={() => changeQuarter(i + 1)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors ${
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-colors ${
                 quarter === i + 1
                   ? 'bg-orange-500 text-white'
                   : 'bg-gray-700 text-gray-400'
@@ -409,12 +431,12 @@ export default function GameStatsPage() {
           {timerRunning ? (
             <button
               onClick={toggleTimer}
-              className={`flex items-center gap-0.5 text-sm font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
+              className={`flex items-center gap-1 text-base font-mono font-bold px-2.5 py-1 rounded transition-colors ${
                 timerDisplay <= 60 ? 'bg-red-700 text-red-100 animate-pulse' : 'bg-gray-700 text-white'
               }`}
             >
               <span className="tabular-nums">{formatTime(timerDisplay)}</span>
-              <span className="text-[10px]">⏸</span>
+              <span className="text-xs">⏸</span>
             </button>
           ) : (
             <div className="flex items-center gap-0.5">
@@ -428,11 +450,11 @@ export default function GameStatsPage() {
                   setTimerManual(m, s);
                   setEditMin('');
                 }}
-                className="w-7 bg-gray-700 text-white text-center text-xs font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-9 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-1 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 inputMode="numeric"
                 min="0"
               />
-              <span className="text-gray-400 text-xs font-bold">:</span>
+              <span className="text-gray-400 text-sm font-bold">:</span>
               <input
                 type="number"
                 value={editSec || String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
@@ -443,7 +465,7 @@ export default function GameStatsPage() {
                   setTimerManual(m, Math.min(s, 59));
                   setEditSec('');
                 }}
-                className="w-7 bg-gray-700 text-white text-center text-xs font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-9 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-1 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 inputMode="numeric"
                 min="0"
                 max="59"
@@ -451,7 +473,7 @@ export default function GameStatsPage() {
               <button
                 onClick={toggleTimer}
                 disabled={timerDisplay <= 0}
-                className={`px-1 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
                   timerDisplay > 0
                     ? 'bg-green-600 text-white'
                     : 'bg-gray-700 text-gray-500 cursor-not-allowed'
@@ -461,36 +483,37 @@ export default function GameStatsPage() {
               </button>
             </div>
           )}
-          <button onClick={resetTimer} className="px-1.5 py-0.5 bg-gray-700 text-gray-300 rounded text-[10px] font-bold" title="タイマーリセット">
+          <button onClick={resetTimer} className="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs font-bold">
             RST
           </button>
-          <button onClick={() => setShowStats(true)} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold">
-            Stats
+        </div>
+        {/* 3行目: 機能ボタン */}
+        <div className="flex items-center justify-center gap-2 mt-1">
+          <button onClick={() => setShowStats(true)} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-bold">
+            スタッツ
           </button>
-          <button onClick={finishGame} className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold">
-            終了
+          <button onClick={finishGame} className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold">
+            試合終了
           </button>
         </div>
       </div>
 
-      {/* 選択中の選手 */}
+      {/* 選択中の選手 + フィードバック */}
       <div
         className={`px-2 py-1 text-center text-xs font-bold transition-colors ${
-          hasSelection
-            ? isMyTeamSelected ? 'bg-orange-600 text-white' : 'bg-blue-600 text-white'
-            : 'bg-gray-800 text-gray-500'
+          feedbackMessage
+            ? 'bg-green-700 text-white animate-pulse'
+            : hasSelection
+              ? isMyTeamSelected ? 'bg-orange-600 text-white' : 'bg-blue-600 text-white'
+              : 'bg-gray-800 text-gray-500'
         }`}
       >
-        {hasSelection
-          ? `#${selectedPlayer?.number} ${selectedPlayer?.name}`
-          : '↓ 選手をタップ'}
+        {feedbackMessage
+          ? feedbackMessage
+          : hasSelection
+            ? `#${selectedPlayer?.number} ${selectedPlayer?.name}`
+            : '↓ 選手をタップ'}
       </div>
-
-      {feedbackMessage && (
-        <div className="bg-green-700 text-white text-center py-0.5 text-xs font-bold animate-pulse">
-          {feedbackMessage}
-        </div>
-      )}
 
       {/* 選手リスト（左右分割） */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -508,6 +531,7 @@ export default function GameStatsPage() {
                   isSelected={selectedPlayerId === player.id && selectedSide === 'my'}
                   isOnCourt={onCourtIds.has(player.id!)}
                   pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                  fouls={getPlayerFouls(player.id!)}
                   teamColor="orange"
                   onSelect={() => {
                     if (selectedPlayerId === player.id && selectedSide === 'my') {
@@ -536,6 +560,7 @@ export default function GameStatsPage() {
                   isSelected={selectedPlayerId === player.id && selectedSide === 'opp'}
                   isOnCourt={onCourtIds.has(player.id!)}
                   pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                  fouls={getPlayerFouls(player.id!)}
                   teamColor="blue"
                   onSelect={() => {
                     if (selectedPlayerId === player.id && selectedSide === 'opp') {
@@ -552,16 +577,15 @@ export default function GameStatsPage() {
         </div>
       </div>
 
-      {/* アクションボタン */}
-      <div className="bg-gray-800 border-t border-gray-700 px-1.5 py-1 space-y-1">
-        {/* シュート成功 */}
-        <div className="flex gap-1">
-          {ACTION_BUTTONS.filter((b) => b.group === 'score').map((btn) => (
+      {/* アクションボタン: 6列 x 2行 */}
+      <div className="bg-gray-800 border-t border-gray-700 px-1 py-1 space-y-1">
+        <div className="grid grid-cols-6 gap-1">
+          {STAT_ROW1.map((btn) => (
             <button
               key={btn.action}
               onClick={() => handleAction(btn.action)}
               disabled={!hasSelection}
-              className={`flex-1 py-2.5 text-base font-bold rounded-lg transition-colors active:scale-95 ${
+              className={`py-2.5 text-sm font-bold rounded-lg transition-colors active:scale-95 ${
                 hasSelection
                   ? 'bg-green-600 text-white'
                   : 'bg-green-900 text-green-700 cursor-not-allowed'
@@ -571,14 +595,13 @@ export default function GameStatsPage() {
             </button>
           ))}
         </div>
-        {/* シュートミス（同じサイズ） */}
-        <div className="flex gap-1">
-          {ACTION_BUTTONS.filter((b) => b.group === 'miss').map((btn) => (
+        <div className="grid grid-cols-6 gap-1">
+          {STAT_ROW2.map((btn) => (
             <button
               key={btn.action}
               onClick={() => handleAction(btn.action)}
               disabled={!hasSelection}
-              className={`flex-1 py-2.5 text-base font-bold rounded-lg transition-colors active:scale-95 ${
+              className={`py-2.5 text-sm font-bold rounded-lg transition-colors active:scale-95 ${
                 hasSelection
                   ? 'bg-gray-600 text-gray-100'
                   : 'bg-gray-800 text-gray-600 cursor-not-allowed'
@@ -588,33 +611,19 @@ export default function GameStatsPage() {
             </button>
           ))}
         </div>
-        {/* その他スタッツ + 戻す + メンバーチェンジ */}
-        <div className="flex gap-1 items-center">
-          {ACTION_BUTTONS.filter((b) => b.group === 'stat').map((btn) => (
-            <button
-              key={btn.action}
-              onClick={() => handleAction(btn.action)}
-              disabled={!hasSelection}
-              className={`flex-1 py-1.5 text-[11px] font-bold rounded transition-colors active:scale-95 ${
-                hasSelection
-                  ? 'bg-gray-700 text-white'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
+        {/* 戻す・交代 */}
+        <div className="flex gap-1">
           <button
             onClick={handleUndo}
-            className="flex-1 py-1.5 text-[11px] bg-yellow-700 text-white font-bold rounded transition-colors active:scale-95"
+            className="flex-1 py-2 text-sm bg-yellow-700 text-white font-bold rounded-lg transition-colors active:scale-95"
           >
             戻す
           </button>
           <button
             onClick={() => setShowMemberChange(true)}
-            className="flex-1 py-1.5 text-[11px] bg-teal-700 text-white font-bold rounded transition-colors"
+            className="flex-1 py-2 text-sm bg-teal-700 text-white font-bold rounded-lg transition-colors"
           >
-            交代
+            メンバーチェンジ
           </button>
         </div>
       </div>
@@ -659,6 +668,7 @@ function PlayerRow({
   isSelected,
   isOnCourt,
   pts,
+  fouls,
   teamColor,
   onSelect,
   onToggleCourt,
@@ -668,12 +678,12 @@ function PlayerRow({
   isSelected: boolean;
   isOnCourt: boolean;
   pts: number;
+  fouls: number;
   teamColor: 'orange' | 'blue';
   onSelect: () => void;
   onToggleCourt: () => void;
 }) {
   const selectedBg = teamColor === 'orange' ? 'bg-orange-500 ring-orange-300' : 'bg-blue-500 ring-blue-300';
-  const selectedText = teamColor === 'orange' ? 'text-orange-100' : 'text-blue-100';
 
   return (
     <div className="flex items-center gap-px">
@@ -686,19 +696,28 @@ function PlayerRow({
       />
       <button
         onClick={onSelect}
-        className={`flex-1 text-left px-1.5 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-between min-w-0 ${
+        className={`flex-1 text-left px-1.5 py-1.5 rounded text-xs font-medium transition-colors flex items-center min-w-0 ${
           isSelected ? `${selectedBg} text-white ring-2` : 'bg-gray-800 text-gray-200 active:bg-gray-600'
         }`}
       >
-        <span className="truncate">
+        <span className="truncate flex-1 min-w-0">
           <span className="font-mono font-bold mr-0.5 text-[10px]">#{player.number}</span>
           <span className="text-[11px]">{player.name}</span>
         </span>
-        {pts > 0 && (
-          <span className={`text-[10px] flex-shrink-0 ml-0.5 ${isSelected ? selectedText : 'text-gray-500'}`}>
-            {pts}
-          </span>
-        )}
+        <span className="flex items-center gap-1 flex-shrink-0 ml-0.5">
+          {pts > 0 && (
+            <span className={`text-[10px] ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+              {pts}p
+            </span>
+          )}
+          {fouls > 0 && (
+            <span className={`text-[10px] font-bold px-1 rounded ${
+              fouls >= 5 ? 'bg-red-600 text-white' : fouls >= 4 ? 'bg-yellow-600 text-white' : isSelected ? 'text-white/70' : 'text-red-400'
+            }`}>
+              F{fouls}
+            </span>
+          )}
+        </span>
       </button>
     </div>
   );
