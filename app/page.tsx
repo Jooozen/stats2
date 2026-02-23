@@ -68,27 +68,6 @@ export default function HomePage() {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-8 text-center">バスケスタッツ</h1>
 
-      {!hasTeams ? (
-        <div className="bg-gray-800 rounded-xl p-8 text-center mb-8">
-          <p className="text-lg text-gray-300 mb-4">
-            まずチームを登録しましょう
-          </p>
-          <Link
-            href="/teams"
-            className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors"
-          >
-            チーム登録へ
-          </Link>
-        </div>
-      ) : (
-        <Link
-          href="/games"
-          className="block bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 px-8 rounded-xl text-xl text-center mb-8 transition-colors"
-        >
-          新しい試合を始める
-        </Link>
-      )}
-
       {recentGames.length > 0 && (
         <div>
           <h2 className="text-xl font-semibold mb-4 text-gray-300">
@@ -131,6 +110,25 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* 右下FAB */}
+      <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-3 items-end">
+        {!hasTeams ? (
+          <Link
+            href="/teams"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
+          >
+            チーム登録
+          </Link>
+        ) : (
+          <Link
+            href="/games"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
+          >
+            ＋ 新規試合
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

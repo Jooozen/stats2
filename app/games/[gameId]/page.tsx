@@ -9,21 +9,22 @@ import { useGameStore } from '@/lib/store';
 const QUARTER_LABELS = ['Q1', 'Q2', 'Q3', 'Q4', 'OT'];
 
 // 6列 x 2行のスタッツボタン配置
-const STAT_ROW1: { action: StatAction; label: string }[] = [
-  { action: 'pts2', label: '2P' },
-  { action: 'pts3', label: '3P' },
-  { action: 'ft', label: 'FT' },
-  { action: 'reb', label: 'REB' },
-  { action: 'ast', label: 'AST' },
-  { action: 'stl', label: 'STL' },
+// category: 'shoot' = シュート関係, 'other' = それ以外
+const STAT_ROW1: { action: StatAction; label: string; category: 'shoot' | 'other' }[] = [
+  { action: 'pts2', label: '2P', category: 'shoot' },
+  { action: 'pts3', label: '3P', category: 'shoot' },
+  { action: 'ft', label: 'FT', category: 'shoot' },
+  { action: 'reb', label: 'REB', category: 'other' },
+  { action: 'ast', label: 'AST', category: 'other' },
+  { action: 'stl', label: 'STL', category: 'other' },
 ];
-const STAT_ROW2: { action: StatAction; label: string }[] = [
-  { action: 'miss2', label: 'ミス2P' },
-  { action: 'miss3', label: 'ミス3P' },
-  { action: 'missFt', label: 'ミスFT' },
-  { action: 'blk', label: 'BLK' },
-  { action: 'to', label: 'TO' },
-  { action: 'foul', label: 'FOUL' },
+const STAT_ROW2: { action: StatAction; label: string; category: 'shoot' | 'other' }[] = [
+  { action: 'miss2', label: 'ミス2P', category: 'shoot' },
+  { action: 'miss3', label: 'ミス3P', category: 'shoot' },
+  { action: 'missFt', label: 'ミスFT', category: 'shoot' },
+  { action: 'blk', label: 'BLK', category: 'other' },
+  { action: 'to', label: 'TO', category: 'other' },
+  { action: 'foul', label: 'FOUL', category: 'other' },
 ];
 const ALL_STAT_BUTTONS = [...STAT_ROW1, ...STAT_ROW2];
 
@@ -586,9 +587,13 @@ export default function GameStatsPage() {
               onClick={() => handleAction(btn.action)}
               disabled={!hasSelection}
               className={`py-2.5 text-sm font-bold rounded-lg transition-colors active:scale-95 ${
-                hasSelection
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-900 text-green-700 cursor-not-allowed'
+                btn.category === 'shoot'
+                  ? hasSelection
+                    ? 'bg-green-600 text-white'
+                    : 'bg-green-900 text-green-700 cursor-not-allowed'
+                  : hasSelection
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-sky-900 text-sky-700 cursor-not-allowed'
               }`}
             >
               {btn.label}
@@ -602,9 +607,13 @@ export default function GameStatsPage() {
               onClick={() => handleAction(btn.action)}
               disabled={!hasSelection}
               className={`py-2.5 text-sm font-bold rounded-lg transition-colors active:scale-95 ${
-                hasSelection
-                  ? 'bg-gray-600 text-gray-100'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                btn.category === 'shoot'
+                  ? hasSelection
+                    ? 'bg-gray-600 text-gray-100'
+                    : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : hasSelection
+                    ? 'bg-sky-700 text-white'
+                    : 'bg-sky-950 text-sky-800 cursor-not-allowed'
               }`}
             >
               {btn.label}
