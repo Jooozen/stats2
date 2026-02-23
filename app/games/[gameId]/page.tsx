@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db, type Game, type Team, type Player, type StatEvent, type StatAction, type ShotZone, SHOT_ZONE_INFO } from '@/lib/db';
+import { db, type Game, type Team, type Player, type StatEvent, type StatAction, type ShotZone, type GameCategory, SHOT_ZONE_INFO, GAME_CATEGORY_CONFIG } from '@/lib/db';
 import { calcTeamScore, calcPlayerStats } from '@/lib/stats';
 import { useGameStore } from '@/lib/store';
 
@@ -365,8 +365,28 @@ export default function GameStatsPage() {
 
   async function changeQuarter(q: number) {
     setQuarter(q);
-    if (game?.id) {
-      await db.games.update(game.id, { currentQuarter: q });
+    // OTに切り替えた場合、OT時間でタイマーをリセット
+    if (q >= 5 && game?.overtimeMinutes) {
+      const otDur = game.overtimeMinutes * 60;
+      setQuarterDuration(otDur);
+      remainingRef.current = otDur;
+      setTimerDisplay(otDur);
+      setTimerRunning(false);
+      if (game.id) {
+        await db.games.update(game.id, {
+          currentQuarter: q,
+          timerSeconds: otDur,
+          timerRunning: false,
+          timerStartedAt: undefined,
+        });
+      }
+    } else {
+      // 通常クォーター
+      const qDur = (game?.quarterMinutes || 10) * 60;
+      setQuarterDuration(qDur);
+      if (game?.id) {
+        await db.games.update(game.id, { currentQuarter: q });
+      }
     }
   }
 
@@ -461,6 +481,47 @@ export default function GameStatsPage() {
   }
   const myTeamQFouls = getTeamQuarterFouls(game.myTeamId);
   const oppTeamQFouls = getTeamQuarterFouls(game.opponentTeamId);
+
+  // タイムアウト集計
+  const categoryConfig = game.category ? GAME_CATEGORY_CONFIG[game.category] : null;
+
+  function getTeamTimeouts(teamId: number, half: 'first' | 'second' | 'overtime'): number {
+    return events.filter((e) => {
+      if (e.teamId !== teamId || e.action !== 'timeout') return false;
+      if (half === 'first') return e.quarter <= 2;
+      if (half === 'second') return e.quarter >= 3 && e.quarter <= 4;
+      return e.quarter >= 5; // OT
+    }).length;
+  }
+
+  function getTimeoutRemaining(teamId: number): { used: number; max: number; label: string } {
+    if (!categoryConfig) return { used: 0, max: 0, label: '' };
+    const rules = categoryConfig.timeouts;
+    if (quarter <= 2) {
+      const used = getTeamTimeouts(teamId, 'first');
+      return { used, max: rules.firstHalf, label: '前半' };
+    } else if (quarter <= 4) {
+      const used = getTeamTimeouts(teamId, 'second');
+      return { used, max: rules.secondHalf, label: '後半' };
+    } else {
+      const used = getTeamTimeouts(teamId, 'overtime');
+      return { used, max: rules.overtime, label: 'OT' };
+    }
+  }
+
+  const myTO = getTimeoutRemaining(game.myTeamId);
+  const oppTO = getTimeoutRemaining(game.opponentTeamId);
+
+  async function handleTimeout(teamId: number) {
+    const gt = getGameTime();
+    await db.statEvents.add({
+      gameId, playerId: 0, teamId, quarter,
+      action: 'timeout', timestamp: new Date(), gameTime: gt,
+    });
+    await reloadEvents();
+    const teamName = teamId === game?.myTeamId ? (myTeam?.name || '自チーム') : (opponentTeam?.name || '相手');
+    showFeedback(`${teamName} タイムアウト [${formatTime(gt)}]`);
+  }
 
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-900 overflow-hidden select-none">
@@ -579,6 +640,50 @@ export default function GameStatsPage() {
             タイムライン
           </button>
         </div>
+        {/* 4行目: タイムアウト残数 */}
+        {categoryConfig && (
+          <div className="flex items-center justify-between mt-1 px-1">
+            <button
+              onClick={() => {
+                if (myTO.used >= myTO.max) { showFeedback('タイムアウト残り0回です'); return; }
+                handleTimeout(game.myTeamId);
+              }}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                myTO.used < myTO.max
+                  ? 'bg-orange-700 text-white active:bg-orange-600'
+                  : 'bg-gray-700 text-gray-500'
+              }`}
+            >
+              <span>TO</span>
+              <span className="flex gap-0.5">
+                {Array.from({ length: myTO.max }).map((_, i) => (
+                  <span key={i} className={`w-2 h-2 rounded-full ${i < myTO.max - myTO.used ? 'bg-orange-400' : 'bg-gray-600'}`} />
+                ))}
+              </span>
+              <span className="text-[9px] opacity-70">{myTO.max - myTO.used}/{myTO.max}</span>
+            </button>
+            <span className="text-[9px] text-gray-500 font-bold">{myTO.label}</span>
+            <button
+              onClick={() => {
+                if (oppTO.used >= oppTO.max) { showFeedback('タイムアウト残り0回です'); return; }
+                handleTimeout(game.opponentTeamId);
+              }}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                oppTO.used < oppTO.max
+                  ? 'bg-blue-700 text-white active:bg-blue-600'
+                  : 'bg-gray-700 text-gray-500'
+              }`}
+            >
+              <span className="text-[9px] opacity-70">{oppTO.max - oppTO.used}/{oppTO.max}</span>
+              <span className="flex gap-0.5">
+                {Array.from({ length: oppTO.max }).map((_, i) => (
+                  <span key={i} className={`w-2 h-2 rounded-full ${i < oppTO.max - oppTO.used ? 'bg-blue-400' : 'bg-gray-600'}`} />
+                ))}
+              </span>
+              <span>TO</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 選択中の選手 + フィードバック */}
@@ -1229,6 +1334,7 @@ const ACTION_LABEL_MAP: Record<StatAction, string> = {
   miss2: 'ミス2P', miss3: 'ミス3P', missFt: 'ミスFT',
   reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK',
   to: 'TO', foul: 'FOUL', subIn: 'IN', subOut: 'OUT',
+  timeout: 'TO(タイムアウト)',
 };
 
 // 修正時に選べるアクション（subIn/subOut は除外）
@@ -1273,6 +1379,7 @@ function TimelinePanel({
   function getActionColor(action: StatAction): string {
     if (['pts2', 'pts3', 'ft'].includes(action)) return 'text-green-400';
     if (['miss2', 'miss3', 'missFt'].includes(action)) return 'text-gray-400';
+    if (action === 'timeout') return 'text-yellow-400';
     return 'text-sky-400';
   }
 
@@ -1325,8 +1432,14 @@ function TimelinePanel({
                     </span>
                     {/* 選手 */}
                     <span className="text-sm text-white truncate flex-1">
-                      <span className="font-mono text-gray-400 mr-1">#{player?.number}</span>
-                      {player?.name}
+                      {ev.action === 'timeout' ? (
+                        <span className="text-yellow-400">タイムアウト</span>
+                      ) : (
+                        <>
+                          <span className="font-mono text-gray-400 mr-1">#{player?.number}</span>
+                          {player?.name}
+                        </>
+                      )}
                     </span>
                     {/* アクション + ゾーン */}
                     <span className="flex items-center gap-1">
@@ -1345,31 +1458,35 @@ function TimelinePanel({
                 {/* 編集パネル */}
                 {isEditing && (
                   <div className="bg-gray-800 px-4 py-3 border-b border-gray-700">
-                    <p className="text-xs text-gray-400 mb-2">変更先のアクションを選択：</p>
-                    <div className="grid grid-cols-6 gap-1.5 mb-3">
-                      {EDITABLE_ACTIONS.map((act) => (
-                        <button
-                          key={act}
-                          onClick={async () => {
-                            if (act !== ev.action) {
-                              await onUpdate(ev.id!, act);
-                            }
-                            setEditingId(null);
-                          }}
-                          className={`py-2 text-xs font-bold rounded transition-colors ${
-                            act === ev.action
-                              ? 'bg-white text-gray-900 ring-2 ring-white'
-                              : ['pts2', 'pts3', 'ft'].includes(act)
-                                ? 'bg-green-700 text-white'
-                                : ['miss2', 'miss3', 'missFt'].includes(act)
-                                  ? 'bg-gray-600 text-gray-200'
-                                  : 'bg-sky-700 text-white'
-                          }`}
-                        >
-                          {ACTION_LABEL_MAP[act]}
-                        </button>
-                      ))}
-                    </div>
+                    {ev.action !== 'timeout' && (
+                      <>
+                        <p className="text-xs text-gray-400 mb-2">変更先のアクションを選択：</p>
+                        <div className="grid grid-cols-6 gap-1.5 mb-3">
+                          {EDITABLE_ACTIONS.map((act) => (
+                            <button
+                              key={act}
+                              onClick={async () => {
+                                if (act !== ev.action) {
+                                  await onUpdate(ev.id!, act);
+                                }
+                                setEditingId(null);
+                              }}
+                              className={`py-2 text-xs font-bold rounded transition-colors ${
+                                act === ev.action
+                                  ? 'bg-white text-gray-900 ring-2 ring-white'
+                                  : ['pts2', 'pts3', 'ft'].includes(act)
+                                    ? 'bg-green-700 text-white'
+                                    : ['miss2', 'miss3', 'missFt'].includes(act)
+                                      ? 'bg-gray-600 text-gray-200'
+                                      : 'bg-sky-700 text-white'
+                              }`}
+                            >
+                              {ACTION_LABEL_MAP[act]}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                     <button
                       onClick={async () => {
                         if (confirm('この記録を削除しますか？')) {

@@ -16,6 +16,35 @@ export interface Player {
   name: string;
 }
 
+// 試合カテゴリ
+export type GameCategory = 'junior_high' | 'high_school' | 'adult';
+
+export const GAME_CATEGORY_CONFIG: Record<GameCategory, {
+  label: string;
+  quarterMinutes: number;
+  overtimeMinutes: number;
+  timeouts: { firstHalf: number; secondHalf: number; overtime: number };
+}> = {
+  junior_high: {
+    label: '中学',
+    quarterMinutes: 8,
+    overtimeMinutes: 5,
+    timeouts: { firstHalf: 2, secondHalf: 3, overtime: 1 },
+  },
+  high_school: {
+    label: '高校',
+    quarterMinutes: 10,
+    overtimeMinutes: 5,
+    timeouts: { firstHalf: 2, secondHalf: 3, overtime: 1 },
+  },
+  adult: {
+    label: '社会人',
+    quarterMinutes: 10,
+    overtimeMinutes: 5,
+    timeouts: { firstHalf: 2, secondHalf: 3, overtime: 1 },
+  },
+};
+
 // 試合
 export interface Game {
   id?: number;
@@ -25,8 +54,11 @@ export interface Game {
   status: 'live' | 'finished';
   currentQuarter: number;
   createdAt: Date;
+  // カテゴリ
+  category?: GameCategory;
   // クォーター設定
   quarterMinutes?: number;   // 1クォーターの時間（分）デフォルト10
+  overtimeMinutes?: number;  // OTの時間（分）デフォルト5
   // タイマー状態（永続化）カウントダウン残り秒数
   timerSeconds?: number;     // 残り秒数（一時停止時に保存）
   timerStartedAt?: number;   // Date.now() タイマー開始時刻（実行中のみ）
@@ -50,7 +82,8 @@ export type StatAction =
   | 'to'
   | 'foul'
   | 'subIn'
-  | 'subOut';
+  | 'subOut'
+  | 'timeout';
 
 export interface StatEvent {
   id?: number;
@@ -97,6 +130,9 @@ export class BasketballDB extends Dexie {
     });
     this.version(2).stores({
       statEvents: '++id, gameId, playerId, teamId, quarter, action, timestamp, zone',
+    });
+    this.version(3).stores({
+      games: '++id, myTeamId, opponentTeamId, date, status, createdAt, category',
     });
   }
 }

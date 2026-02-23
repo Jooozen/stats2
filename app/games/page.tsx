@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { db, type Team, type Player, type Game, type StatEvent } from '@/lib/db';
+import { db, type Team, type Player, type Game, type StatEvent, type GameCategory, GAME_CATEGORY_CONFIG } from '@/lib/db';
 import { calcTeamScore } from '@/lib/stats';
 
 interface GameWithDetails {
@@ -37,6 +37,9 @@ export default function GamesPage() {
   const [gameDate, setGameDate] = useState(
     new Date().toISOString().split('T')[0]
   );
+
+  // カテゴリ
+  const [category, setCategory] = useState<GameCategory>('high_school');
 
   // クォーター時間（分）
   const [quarterMinutes, setQuarterMinutes] = useState(10);
@@ -172,6 +175,7 @@ export default function GamesPage() {
       }
     }
 
+    const config = GAME_CATEGORY_CONFIG[category];
     const gameId = await db.games.add({
       myTeamId: selectedMyTeamId,
       opponentTeamId,
@@ -179,7 +183,9 @@ export default function GamesPage() {
       status: 'live',
       currentQuarter: 1,
       createdAt: new Date(),
+      category,
       quarterMinutes,
+      overtimeMinutes: config.overtimeMinutes,
       timerSeconds: quarterMinutes * 60,
     });
 
@@ -251,7 +257,35 @@ export default function GamesPage() {
               />
             </div>
 
-            {/* クォーター時間 */}
+            {/* カテゴリ選択 */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                カテゴリ
+              </label>
+              <div className="flex gap-2">
+                {(Object.entries(GAME_CATEGORY_CONFIG) as [GameCategory, typeof GAME_CATEGORY_CONFIG[GameCategory]][]).map(([key, config]) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setCategory(key);
+                      setQuarterMinutes(config.quarterMinutes);
+                    }}
+                    className={`flex-1 py-3 rounded-lg text-sm font-bold transition-colors ${
+                      category === key
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div>{config.label}</div>
+                    <div className="text-[10px] font-normal mt-0.5 opacity-75">
+                      Q{config.quarterMinutes}分 / OT{config.overtimeMinutes}分
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* クォーター時間（カスタム） */}
             <div>
               <label className="block text-sm text-gray-400 mb-1">
                 1クォーターの時間
