@@ -87,17 +87,31 @@ export async function ensureExampleData() {
   const count = await db.teams.count();
   if (count > 0) return;
 
-  const teamId = await db.teams.add({
-    name: 'example',
+  const team1Id = await db.teams.add({
+    name: 'example1',
     isMyTeam: true,
     createdAt: new Date(),
   });
 
   await db.players.bulkAdd([
-    { teamId: teamId as number, number: 4, name: '田中' },
-    { teamId: teamId as number, number: 5, name: '鈴木' },
-    { teamId: teamId as number, number: 6, name: '山田' },
-    { teamId: teamId as number, number: 7, name: '佐藤' },
-    { teamId: teamId as number, number: 8, name: '高橋' },
+    { teamId: team1Id as number, number: 4, name: '田中' },
+    { teamId: team1Id as number, number: 5, name: '鈴木' },
+    { teamId: team1Id as number, number: 6, name: '山田' },
+    { teamId: team1Id as number, number: 7, name: '佐藤' },
+    { teamId: team1Id as number, number: 8, name: '高橋' },
+  ]);
+
+  const team2Id = await db.teams.add({
+    name: 'example2',
+    isMyTeam: false,
+    createdAt: new Date(),
+  });
+
+  await db.players.bulkAdd([
+    { teamId: team2Id as number, number: 4, name: '中村' },
+    { teamId: team2Id as number, number: 5, name: '小林' },
+    { teamId: team2Id as number, number: 6, name: '加藤' },
+    { teamId: team2Id as number, number: 7, name: '吉田' },
+    { teamId: team2Id as number, number: 8, name: '渡辺' },
   ]);
 }
