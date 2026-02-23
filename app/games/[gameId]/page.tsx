@@ -98,9 +98,6 @@ export default function GameStatsPage() {
   // 選択サイド（同一チーム対戦時に左右を区別）
   const [selectedSide, setSelectedSide] = useState<'my' | 'opp' | null>(null);
 
-  // 選手リスト開閉
-  const [expandedTeam, setExpandedTeam] = useState<'my' | 'opp' | null>(null);
-
   // タイマー（カウントダウン）
   const [timerDisplay, setTimerDisplay] = useState(600); // 残り秒数
   const [timerRunning, setTimerRunning] = useState(false);
@@ -727,31 +724,14 @@ export default function GameStatsPage() {
 
       {/* 選手リスト + コート図 */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        {/* 選手リスト（プルダウン式） */}
-        <div className="flex-shrink-0">
-          {/* チームヘッダー（横並び） */}
-          <div className="flex border-b border-gray-700">
-            <button
-              onClick={() => setExpandedTeam(expandedTeam === 'my' ? null : 'my')}
-              className={`flex-1 px-2 py-1.5 text-xs font-bold text-center transition-colors border-r border-gray-700 ${
-                expandedTeam === 'my' ? 'bg-orange-600 text-white' : 'bg-gray-800 text-orange-400'
-              }`}
-            >
-              {expandedTeam === 'my' ? '▲' : '▼'} {myTeam?.name}
-            </button>
-            <button
-              onClick={() => setExpandedTeam(expandedTeam === 'opp' ? null : 'opp')}
-              className={`flex-1 px-2 py-1.5 text-xs font-bold text-center transition-colors ${
-                expandedTeam === 'opp' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-blue-400'
-              }`}
-            >
-              {expandedTeam === 'opp' ? '▲' : '▼'} {opponentTeam?.name}
-            </button>
-          </div>
-          {/* 展開中の選手リスト */}
-          {expandedTeam === 'my' && (
-            <div className="max-h-[30vh] overflow-y-auto bg-gray-900 border-b border-gray-700">
-              <div className="px-0.5 py-0.5 space-y-px">
+        {/* 選手リスト（左右分割） */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          <div className="flex-1 border-r border-gray-700 overflow-y-auto">
+            <div className="px-0.5 py-0.5">
+              <h3 className="text-center text-[10px] text-orange-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
+                {myTeam?.name}
+              </h3>
+              <div className="space-y-px">
                 {myPlayers.map((player) => (
                   <PlayerRow
                     key={player.id}
@@ -767,7 +747,6 @@ export default function GameStatsPage() {
                         clearSelection(); setSelectedSide(null);
                       } else {
                         selectPlayer(player.id!, game.myTeamId); setSelectedSide('my');
-                        setExpandedTeam(null);
                       }
                     }}
                     onToggleCourt={() => toggleOnCourt(player.id!, game.myTeamId)}
@@ -775,10 +754,13 @@ export default function GameStatsPage() {
                 ))}
               </div>
             </div>
-          )}
-          {expandedTeam === 'opp' && (
-            <div className="max-h-[30vh] overflow-y-auto bg-gray-900 border-b border-gray-700">
-              <div className="px-0.5 py-0.5 space-y-px">
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-0.5 py-0.5">
+              <h3 className="text-center text-[10px] text-blue-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
+                {opponentTeam?.name}
+              </h3>
+              <div className="space-y-px">
                 {opponentPlayers.map((player) => (
                   <PlayerRow
                     key={player.id}
@@ -794,7 +776,6 @@ export default function GameStatsPage() {
                         clearSelection(); setSelectedSide(null);
                       } else {
                         selectPlayer(player.id!, game.opponentTeamId); setSelectedSide('opp');
-                        setExpandedTeam(null);
                       }
                     }}
                     onToggleCourt={() => toggleOnCourt(player.id!, game.opponentTeamId)}
@@ -802,7 +783,7 @@ export default function GameStatsPage() {
                 ))}
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* コート図（シュートゾーン選択） */}
