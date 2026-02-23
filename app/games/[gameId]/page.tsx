@@ -63,6 +63,9 @@ export default function GameStatsPage() {
   const [loading, setLoading] = useState(true);
   const [feedbackMessage, setFeedbackMessage] = useState('');
 
+  // 選択サイド（同一チーム対戦時に左右を区別）
+  const [selectedSide, setSelectedSide] = useState<'my' | 'opp' | null>(null);
+
   // タイマー（カウントダウン）
   const [timerDisplay, setTimerDisplay] = useState(600); // 残り秒数
   const [timerRunning, setTimerRunning] = useState(false);
@@ -244,10 +247,9 @@ export default function GameStatsPage() {
   );
 
   const selectedPlayer = selectedPlayerId
-    ? [...myPlayers, ...opponentPlayers].find((p) => p.id === selectedPlayerId)
+    ? (selectedSide === 'my' ? myPlayers : opponentPlayers).find((p) => p.id === selectedPlayerId)
     : null;
-  const isMyTeamSelected =
-    selectedTeamId !== null && game !== null && selectedTeamId === game.myTeamId;
+  const isMyTeamSelected = selectedSide === 'my';
 
   async function reloadEvents() {
     const ev = await db.statEvents.where('gameId').equals(gameId).toArray();
@@ -503,15 +505,17 @@ export default function GameStatsPage() {
                   key={player.id}
                   player={player}
                   teamId={game.myTeamId}
-                  isSelected={selectedPlayerId === player.id && selectedTeamId === game.myTeamId}
+                  isSelected={selectedPlayerId === player.id && selectedSide === 'my'}
                   isOnCourt={onCourtIds.has(player.id!)}
                   pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
                   teamColor="orange"
-                  onSelect={() =>
-                    selectedPlayerId === player.id && selectedTeamId === game.myTeamId
-                      ? clearSelection()
-                      : selectPlayer(player.id!, game.myTeamId)
-                  }
+                  onSelect={() => {
+                    if (selectedPlayerId === player.id && selectedSide === 'my') {
+                      clearSelection(); setSelectedSide(null);
+                    } else {
+                      selectPlayer(player.id!, game.myTeamId); setSelectedSide('my');
+                    }
+                  }}
                   onToggleCourt={() => toggleOnCourt(player.id!, game.myTeamId)}
                 />
               ))}
@@ -529,15 +533,17 @@ export default function GameStatsPage() {
                   key={player.id}
                   player={player}
                   teamId={game.opponentTeamId}
-                  isSelected={selectedPlayerId === player.id && selectedTeamId === game.opponentTeamId}
+                  isSelected={selectedPlayerId === player.id && selectedSide === 'opp'}
                   isOnCourt={onCourtIds.has(player.id!)}
                   pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
                   teamColor="blue"
-                  onSelect={() =>
-                    selectedPlayerId === player.id && selectedTeamId === game.opponentTeamId
-                      ? clearSelection()
-                      : selectPlayer(player.id!, game.opponentTeamId)
-                  }
+                  onSelect={() => {
+                    if (selectedPlayerId === player.id && selectedSide === 'opp') {
+                      clearSelection(); setSelectedSide(null);
+                    } else {
+                      selectPlayer(player.id!, game.opponentTeamId); setSelectedSide('opp');
+                    }
+                  }}
                   onToggleCourt={() => toggleOnCourt(player.id!, game.opponentTeamId)}
                 />
               ))}
@@ -547,9 +553,9 @@ export default function GameStatsPage() {
       </div>
 
       {/* アクションボタン */}
-      <div className="bg-gray-800 border-t border-gray-700 px-1.5 py-1">
-        {/* 得点ボタン（大きめ） */}
-        <div className="flex gap-1 mb-1">
+      <div className="bg-gray-800 border-t border-gray-700 px-1.5 py-1 space-y-1">
+        {/* シュート成功 */}
+        <div className="flex gap-1">
           {ACTION_BUTTONS.filter((b) => b.group === 'score').map((btn) => (
             <button
               key={btn.action}
@@ -565,14 +571,31 @@ export default function GameStatsPage() {
             </button>
           ))}
         </div>
-        {/* スタッツ + ミス + 戻す を2行のグリッドに */}
-        <div className="grid grid-cols-5 gap-1 mb-1">
+        {/* シュートミス（同じサイズ） */}
+        <div className="flex gap-1">
+          {ACTION_BUTTONS.filter((b) => b.group === 'miss').map((btn) => (
+            <button
+              key={btn.action}
+              onClick={() => handleAction(btn.action)}
+              disabled={!hasSelection}
+              className={`flex-1 py-2.5 text-base font-bold rounded-lg transition-colors active:scale-95 ${
+                hasSelection
+                  ? 'bg-gray-600 text-gray-100'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+            >
+              {btn.label}
+            </button>
+          ))}
+        </div>
+        {/* その他スタッツ + 戻す + メンバーチェンジ */}
+        <div className="flex gap-1 items-center">
           {ACTION_BUTTONS.filter((b) => b.group === 'stat').map((btn) => (
             <button
               key={btn.action}
               onClick={() => handleAction(btn.action)}
               disabled={!hasSelection}
-              className={`py-1.5 text-[11px] font-bold rounded transition-colors active:scale-95 ${
+              className={`flex-1 py-1.5 text-[11px] font-bold rounded transition-colors active:scale-95 ${
                 hasSelection
                   ? 'bg-gray-700 text-white'
                   : 'bg-gray-800 text-gray-600 cursor-not-allowed'
@@ -581,34 +604,17 @@ export default function GameStatsPage() {
               {btn.label}
             </button>
           ))}
-          {ACTION_BUTTONS.filter((b) => b.group === 'miss').map((btn) => (
-            <button
-              key={btn.action}
-              onClick={() => handleAction(btn.action)}
-              disabled={!hasSelection}
-              className={`py-1.5 text-[10px] font-bold rounded transition-colors active:scale-95 ${
-                hasSelection
-                  ? 'bg-gray-600 text-gray-200'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
           <button
             onClick={handleUndo}
-            className="py-1.5 text-[11px] bg-yellow-700 text-white font-bold rounded transition-colors active:scale-95"
+            className="flex-1 py-1.5 text-[11px] bg-yellow-700 text-white font-bold rounded transition-colors active:scale-95"
           >
             戻す
           </button>
-        </div>
-        {/* メンバーチェンジ */}
-        <div className="flex justify-center">
           <button
             onClick={() => setShowMemberChange(true)}
-            className="px-3 py-1 text-[10px] bg-teal-700 text-white font-bold rounded transition-colors"
+            className="flex-1 py-1.5 text-[11px] bg-teal-700 text-white font-bold rounded transition-colors"
           >
-            メンバーチェンジ
+            交代
           </button>
         </div>
       </div>
