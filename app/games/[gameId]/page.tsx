@@ -373,129 +373,119 @@ export default function GameStatsPage() {
   const hasSelection = selectedPlayerId !== null && selectedTeamId !== null;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 overflow-hidden select-none">
+    <div className="h-[100dvh] flex flex-col bg-gray-900 overflow-hidden select-none">
       {/* スコアボード */}
-      <div className="bg-gray-800 border-b border-gray-700 px-3 py-2">
-        <div className="flex items-center justify-between max-w-5xl mx-auto">
-          <div className="flex-1 text-right pr-2">
-            <span className="text-sm font-bold text-orange-400 truncate block">
-              {myTeam?.name || '自チーム'}
-            </span>
-          </div>
-          <div className="text-center flex items-center gap-2">
-            <span className="text-3xl font-bold tabular-nums text-white">{myScore}</span>
-            <span className="text-lg text-gray-500">-</span>
-            <span className="text-3xl font-bold tabular-nums text-white">{opponentScore}</span>
-          </div>
-          <div className="flex-1 text-left pl-2">
-            <span className="text-sm font-bold text-blue-400 truncate block">
-              {opponentTeam?.name || '相手'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 ml-2">
-            <span className="bg-orange-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-              {QUARTER_LABELS[quarter - 1]}
-            </span>
-            {timerRunning ? (
-              /* 動作中: 表示のみ + 停止ボタン */
-              <button
-                onClick={toggleTimer}
-                className={`flex items-center gap-1 text-sm font-mono font-bold px-2 py-0.5 rounded transition-colors ${
-                  timerDisplay <= 60 ? 'bg-red-700 hover:bg-red-600 text-red-100 animate-pulse' : 'bg-gray-700 hover:bg-gray-600 text-white'
-                }`}
-              >
-                <span className="tabular-nums">{formatTime(timerDisplay)}</span>
-                <span className="text-xs">⏸</span>
-              </button>
-            ) : (
-              /* 停止中: 手入力可能 + 開始ボタン */
-              <div className="flex items-center gap-0.5">
-                <input
-                  type="number"
-                  value={editMin || String(Math.floor(timerDisplay / 60))}
-                  onChange={(e) => setEditMin(e.target.value)}
-                  onBlur={() => {
-                    const m = parseInt(editMin) || 0;
-                    const s = Math.floor(timerDisplay % 60);
-                    setTimerManual(m, s);
-                    setEditMin('');
-                  }}
-                  className="w-8 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                  inputMode="numeric"
-                  min="0"
-                />
-                <span className="text-gray-400 text-sm font-bold">:</span>
-                <input
-                  type="number"
-                  value={editSec || String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
-                  onChange={(e) => setEditSec(e.target.value)}
-                  onBlur={() => {
-                    const m = Math.floor(timerDisplay / 60);
-                    const s = parseInt(editSec) || 0;
-                    setTimerManual(m, Math.min(s, 59));
-                    setEditSec('');
-                  }}
-                  className="w-8 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                  inputMode="numeric"
-                  min="0"
-                  max="59"
-                />
-                <button
-                  onClick={toggleTimer}
-                  disabled={timerDisplay <= 0}
-                  className={`ml-0.5 px-1.5 py-0.5 rounded text-xs font-bold transition-colors ${
-                    timerDisplay > 0
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  ▶
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="bg-gray-800 border-b border-gray-700 px-2 py-1">
+        {/* 1行目: チーム名 + スコア */}
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-xs font-bold text-orange-400 truncate max-w-[80px]">
+            {myTeam?.name || '自チーム'}
+          </span>
+          <span className="text-2xl font-bold tabular-nums text-white mx-1">{myScore}</span>
+          <span className="text-gray-500">-</span>
+          <span className="text-2xl font-bold tabular-nums text-white mx-1">{opponentScore}</span>
+          <span className="text-xs font-bold text-blue-400 truncate max-w-[80px]">
+            {opponentTeam?.name || '相手'}
+          </span>
         </div>
-        <div className="flex items-center justify-center gap-1 mt-1.5">
+        {/* 2行目: Q + タイマー + ボタン */}
+        <div className="flex items-center justify-center gap-1 mt-0.5">
           {QUARTER_LABELS.map((label, i) => (
             <button
               key={label}
               onClick={() => changeQuarter(i + 1)}
-              className={`px-2.5 py-0.5 rounded text-xs font-bold transition-colors ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors ${
                 quarter === i + 1
                   ? 'bg-orange-500 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  : 'bg-gray-700 text-gray-400'
               }`}
             >
               {label}
             </button>
           ))}
-          <button onClick={resetTimer} className="ml-1 px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-bold transition-colors" title="タイマーリセット">
-            リセット
+          <span className="mx-0.5" />
+          {timerRunning ? (
+            <button
+              onClick={toggleTimer}
+              className={`flex items-center gap-0.5 text-sm font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
+                timerDisplay <= 60 ? 'bg-red-700 text-red-100 animate-pulse' : 'bg-gray-700 text-white'
+              }`}
+            >
+              <span className="tabular-nums">{formatTime(timerDisplay)}</span>
+              <span className="text-[10px]">⏸</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-0.5">
+              <input
+                type="number"
+                value={editMin || String(Math.floor(timerDisplay / 60))}
+                onChange={(e) => setEditMin(e.target.value)}
+                onBlur={() => {
+                  const m = parseInt(editMin) || 0;
+                  const s = Math.floor(timerDisplay % 60);
+                  setTimerManual(m, s);
+                  setEditMin('');
+                }}
+                className="w-7 bg-gray-700 text-white text-center text-xs font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                inputMode="numeric"
+                min="0"
+              />
+              <span className="text-gray-400 text-xs font-bold">:</span>
+              <input
+                type="number"
+                value={editSec || String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
+                onChange={(e) => setEditSec(e.target.value)}
+                onBlur={() => {
+                  const m = Math.floor(timerDisplay / 60);
+                  const s = parseInt(editSec) || 0;
+                  setTimerManual(m, Math.min(s, 59));
+                  setEditSec('');
+                }}
+                className="w-7 bg-gray-700 text-white text-center text-xs font-mono font-bold rounded px-0.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                inputMode="numeric"
+                min="0"
+                max="59"
+              />
+              <button
+                onClick={toggleTimer}
+                disabled={timerDisplay <= 0}
+                className={`px-1 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                  timerDisplay > 0
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+          <button onClick={resetTimer} className="px-1.5 py-0.5 bg-gray-700 text-gray-300 rounded text-[10px] font-bold" title="タイマーリセット">
+            RST
           </button>
-          <button onClick={() => setShowStats(true)} className="ml-1 px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold transition-colors">
-            スタッツ
+          <button onClick={() => setShowStats(true)} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold">
+            Stats
           </button>
-          <button onClick={finishGame} className="ml-1 px-2.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold transition-colors">
-            試合終了
+          <button onClick={finishGame} className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold">
+            終了
           </button>
         </div>
       </div>
 
       {/* 選択中の選手 */}
       <div
-        className={`px-3 py-1.5 text-center text-sm font-bold transition-colors ${
+        className={`px-2 py-1 text-center text-xs font-bold transition-colors ${
           hasSelection
             ? isMyTeamSelected ? 'bg-orange-600 text-white' : 'bg-blue-600 text-white'
             : 'bg-gray-800 text-gray-500'
         }`}
       >
         {hasSelection
-          ? `選択中: #${selectedPlayer?.number} ${selectedPlayer?.name}`
-          : '↓ 選手をタップして選択'}
+          ? `#${selectedPlayer?.number} ${selectedPlayer?.name}`
+          : '↓ 選手をタップ'}
       </div>
 
       {feedbackMessage && (
-        <div className="bg-green-700 text-white text-center py-1 text-sm font-bold animate-pulse">
+        <div className="bg-green-700 text-white text-center py-0.5 text-xs font-bold animate-pulse">
           {feedbackMessage}
         </div>
       )}
@@ -503,11 +493,11 @@ export default function GameStatsPage() {
       {/* 選手リスト（左右分割） */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         <div className="flex-1 border-r border-gray-700 overflow-y-auto">
-          <div className="p-1">
-            <h3 className="text-center text-xs text-orange-400 font-bold mb-1 sticky top-0 bg-gray-900 py-0.5 z-10">
+          <div className="px-0.5 py-0.5">
+            <h3 className="text-center text-[10px] text-orange-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
               {myTeam?.name}
             </h3>
-            <div className="space-y-0.5">
+            <div className="space-y-px">
               {myPlayers.map((player) => (
                 <PlayerRow
                   key={player.id}
@@ -529,11 +519,11 @@ export default function GameStatsPage() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <div className="p-1">
-            <h3 className="text-center text-xs text-blue-400 font-bold mb-1 sticky top-0 bg-gray-900 py-0.5 z-10">
+          <div className="px-0.5 py-0.5">
+            <h3 className="text-center text-[10px] text-blue-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
               {opponentTeam?.name}
             </h3>
-            <div className="space-y-0.5">
+            <div className="space-y-px">
               {opponentPlayers.map((player) => (
                 <PlayerRow
                   key={player.id}
@@ -557,72 +547,69 @@ export default function GameStatsPage() {
       </div>
 
       {/* アクションボタン */}
-      <div className="bg-gray-800 border-t border-gray-700 px-2 py-1.5">
-        <div className="max-w-5xl mx-auto space-y-1">
-          <div className="flex gap-1.5 justify-center">
-            {ACTION_BUTTONS.filter((b) => b.group === 'score').map((btn) => (
-              <button
-                key={btn.action}
-                onClick={() => handleAction(btn.action)}
-                disabled={!hasSelection}
-                className={`flex-1 max-w-[120px] py-3 text-lg font-bold rounded-lg transition-colors active:scale-95 ${
-                  hasSelection
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-green-900 text-green-700 cursor-not-allowed'
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-1 justify-center flex-wrap">
-            {ACTION_BUTTONS.filter((b) => b.group === 'stat').map((btn) => (
-              <button
-                key={btn.action}
-                onClick={() => handleAction(btn.action)}
-                disabled={!hasSelection}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors active:scale-95 min-w-[44px] ${
-                  hasSelection
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                    : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-1 justify-center items-center">
-            {ACTION_BUTTONS.filter((b) => b.group === 'miss').map((btn) => (
-              <button
-                key={btn.action}
-                onClick={() => handleAction(btn.action)}
-                disabled={!hasSelection}
-                className={`px-2 py-1.5 text-xs font-bold rounded-lg transition-colors active:scale-95 ${
-                  hasSelection
-                    ? 'bg-gray-600 hover:bg-gray-500 text-gray-200'
-                    : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
-            <div className="flex-1" />
+      <div className="bg-gray-800 border-t border-gray-700 px-1.5 py-1">
+        {/* 得点ボタン（大きめ） */}
+        <div className="flex gap-1 mb-1">
+          {ACTION_BUTTONS.filter((b) => b.group === 'score').map((btn) => (
             <button
-              onClick={handleUndo}
-              className="px-3 py-1.5 text-xs bg-yellow-700 hover:bg-yellow-600 text-white font-bold rounded-lg transition-colors active:scale-95"
+              key={btn.action}
+              onClick={() => handleAction(btn.action)}
+              disabled={!hasSelection}
+              className={`flex-1 py-2.5 text-base font-bold rounded-lg transition-colors active:scale-95 ${
+                hasSelection
+                  ? 'bg-green-600 text-white'
+                  : 'bg-green-900 text-green-700 cursor-not-allowed'
+              }`}
             >
-              戻す
+              {btn.label}
             </button>
-          </div>
-          {/* メンバーチェンジボタン */}
-          <div className="flex justify-center pt-0.5">
+          ))}
+        </div>
+        {/* スタッツ + ミス + 戻す を2行のグリッドに */}
+        <div className="grid grid-cols-5 gap-1 mb-1">
+          {ACTION_BUTTONS.filter((b) => b.group === 'stat').map((btn) => (
             <button
-              onClick={() => setShowMemberChange(true)}
-              className="px-4 py-1.5 text-xs bg-teal-700 hover:bg-teal-600 text-white font-bold rounded-lg transition-colors"
+              key={btn.action}
+              onClick={() => handleAction(btn.action)}
+              disabled={!hasSelection}
+              className={`py-1.5 text-[11px] font-bold rounded transition-colors active:scale-95 ${
+                hasSelection
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
             >
-              メンバーチェンジ
+              {btn.label}
             </button>
-          </div>
+          ))}
+          {ACTION_BUTTONS.filter((b) => b.group === 'miss').map((btn) => (
+            <button
+              key={btn.action}
+              onClick={() => handleAction(btn.action)}
+              disabled={!hasSelection}
+              className={`py-1.5 text-[10px] font-bold rounded transition-colors active:scale-95 ${
+                hasSelection
+                  ? 'bg-gray-600 text-gray-200'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+            >
+              {btn.label}
+            </button>
+          ))}
+          <button
+            onClick={handleUndo}
+            className="py-1.5 text-[11px] bg-yellow-700 text-white font-bold rounded transition-colors active:scale-95"
+          >
+            戻す
+          </button>
+        </div>
+        {/* メンバーチェンジ */}
+        <div className="flex justify-center">
+          <button
+            onClick={() => setShowMemberChange(true)}
+            className="px-3 py-1 text-[10px] bg-teal-700 text-white font-bold rounded transition-colors"
+          >
+            メンバーチェンジ
+          </button>
         </div>
       </div>
 
@@ -683,27 +670,27 @@ function PlayerRow({
   const selectedText = teamColor === 'orange' ? 'text-orange-100' : 'text-blue-100';
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-px">
       <button
         onClick={(e) => { e.stopPropagation(); onToggleCourt(); }}
-        className={`w-5 h-5 rounded-full flex-shrink-0 border-2 transition-colors ${
+        className={`w-4 h-4 rounded-full flex-shrink-0 border-2 transition-colors ${
           isOnCourt ? 'bg-green-500 border-green-400' : 'bg-gray-700 border-gray-600'
         }`}
         title={isOnCourt ? 'ベンチへ' : 'コートイン'}
       />
       <button
         onClick={onSelect}
-        className={`flex-1 text-left px-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${
-          isSelected ? `${selectedBg} text-white ring-2` : 'bg-gray-800 text-gray-200 hover:bg-gray-700 active:bg-gray-600'
+        className={`flex-1 text-left px-1.5 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-between min-w-0 ${
+          isSelected ? `${selectedBg} text-white ring-2` : 'bg-gray-800 text-gray-200 active:bg-gray-600'
         }`}
       >
         <span className="truncate">
-          <span className="font-mono font-bold mr-1 text-xs">#{player.number}</span>
-          {player.name}
+          <span className="font-mono font-bold mr-0.5 text-[10px]">#{player.number}</span>
+          <span className="text-[11px]">{player.name}</span>
         </span>
         {pts > 0 && (
-          <span className={`text-xs flex-shrink-0 ${isSelected ? selectedText : 'text-gray-500'}`}>
-            {pts}pts
+          <span className={`text-[10px] flex-shrink-0 ml-0.5 ${isSelected ? selectedText : 'text-gray-500'}`}>
+            {pts}
           </span>
         )}
       </button>
