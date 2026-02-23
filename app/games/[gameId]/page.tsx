@@ -407,6 +407,22 @@ export default function GameStatsPage() {
     }
   }
 
+  async function suspendGame() {
+    if (!confirm('試合を中断しますか？（後から再開できます）')) return;
+    if (game?.id) {
+      if (timerRunning) {
+        const elapsed = (Date.now() - startTimeRef.current) / 1000;
+        remainingRef.current = Math.max(0, remainingRef.current - elapsed);
+        setTimerRunning(false);
+      }
+      await db.games.update(game.id, {
+        timerRunning: false,
+        timerSeconds: remainingRef.current,
+      });
+      router.push('/games');
+    }
+  }
+
   async function toggleOnCourt(playerId: number, teamId: number) {
     const gt = getGameTime();
     const next = new Set(onCourtIds);
@@ -638,6 +654,9 @@ export default function GameStatsPage() {
           </button>
           <button onClick={() => setShowTimeline(true)} className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold">
             タイムライン
+          </button>
+          <button onClick={suspendGame} className="px-3 py-1 bg-gray-600 text-white rounded text-xs font-bold">
+            中断
           </button>
         </div>
         {/* 4行目: タイムアウト残数 */}
