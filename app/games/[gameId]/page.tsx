@@ -83,6 +83,7 @@ export default function GameStatsPage() {
   const [statsTab, setStatsTab] = useState<'my' | 'opp'>('my');
   const [showMemberChange, setShowMemberChange] = useState(false);
   const [memberTab, setMemberTab] = useState<'my' | 'opp'>('opp');
+  const [showTimeline, setShowTimeline] = useState(false);
 
   const {
     selectedPlayerId,
@@ -496,6 +497,9 @@ export default function GameStatsPage() {
           <button onClick={finishGame} className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold">
             試合終了
           </button>
+          <button onClick={() => setShowTimeline(true)} className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold">
+            タイムライン
+          </button>
         </div>
       </div>
 
@@ -647,6 +651,27 @@ export default function GameStatsPage() {
           statsTab={statsTab}
           setStatsTab={setStatsTab}
           onClose={() => setShowStats(false)}
+        />
+      )}
+
+      {/* タイムラインパネル */}
+      {showTimeline && (
+        <TimelinePanel
+          events={events}
+          myPlayers={myPlayers}
+          opponentPlayers={opponentPlayers}
+          myTeamId={game.myTeamId}
+          myTeamName={myTeam?.name || '自チーム'}
+          oppTeamName={opponentTeam?.name || '相手'}
+          onUpdate={async (eventId, newAction) => {
+            await db.statEvents.update(eventId, { action: newAction });
+            await reloadEvents();
+          }}
+          onDelete={async (eventId) => {
+            await db.statEvents.delete(eventId);
+            await reloadEvents();
+          }}
+          onClose={() => setShowTimeline(false)}
         />
       )}
 
@@ -1004,6 +1029,170 @@ function StatsPanel({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// TimelinePanel（タイムライン表示 + 修正・削除）
+// ============================================================
+const ACTION_LABEL_MAP: Record<StatAction, string> = {
+  pts2: '2P', pts3: '3P', ft: 'FT',
+  miss2: 'ミス2P', miss3: 'ミス3P', missFt: 'ミスFT',
+  reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK',
+  to: 'TO', foul: 'FOUL', subIn: 'IN', subOut: 'OUT',
+};
+
+// 修正時に選べるアクション（subIn/subOut は除外）
+const EDITABLE_ACTIONS: StatAction[] = [
+  'pts2', 'pts3', 'ft', 'miss2', 'miss3', 'missFt',
+  'reb', 'ast', 'stl', 'blk', 'to', 'foul',
+];
+
+function TimelinePanel({
+  events,
+  myPlayers,
+  opponentPlayers,
+  myTeamId,
+  myTeamName,
+  oppTeamName,
+  onUpdate,
+  onDelete,
+  onClose,
+}: {
+  events: StatEvent[];
+  myPlayers: Player[];
+  opponentPlayers: Player[];
+  myTeamId: number;
+  myTeamName: string;
+  oppTeamName: string;
+  onUpdate: (eventId: number, newAction: StatAction) => Promise<void>;
+  onDelete: (eventId: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const allPlayers = [...myPlayers, ...opponentPlayers];
+  function findPlayer(playerId: number) {
+    return allPlayers.find((p) => p.id === playerId);
+  }
+
+  // subIn/subOut を除外し、新しい順に並べる
+  const filtered = events
+    .filter((e) => e.action !== 'subIn' && e.action !== 'subOut')
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  function getActionColor(action: StatAction): string {
+    if (['pts2', 'pts3', 'ft'].includes(action)) return 'text-green-400';
+    if (['miss2', 'miss3', 'missFt'].includes(action)) return 'text-gray-400';
+    return 'text-sky-400';
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/85 z-50 flex flex-col">
+      {/* ヘッダー */}
+      <div className="bg-gray-800 px-4 py-2 flex items-center justify-between border-b border-gray-700">
+        <h2 className="text-base font-bold text-white">タイムライン</h2>
+        <button
+          onClick={onClose}
+          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold rounded transition-colors"
+        >
+          閉じる
+        </button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-400">記録がありません</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {filtered.map((ev) => {
+            const player = findPlayer(ev.playerId);
+            const isMyTeam = ev.teamId === myTeamId;
+            const isEditing = editingId === ev.id;
+
+            return (
+              <div key={ev.id}>
+                <button
+                  onClick={() => setEditingId(isEditing ? null : ev.id!)}
+                  className={`w-full text-left px-4 py-2.5 border-b border-gray-800 transition-colors ${
+                    isEditing ? 'bg-gray-700' : 'bg-gray-900 active:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {/* クォーター */}
+                    <span className="text-[10px] font-bold text-gray-500 w-6 text-center">
+                      Q{ev.quarter}
+                    </span>
+                    {/* ゲームタイム */}
+                    <span className="text-xs font-mono text-gray-500 w-12 text-center">
+                      {ev.gameTime != null ? formatTime(ev.gameTime) : '--:--'}
+                    </span>
+                    {/* チーム色 */}
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      isMyTeam ? 'bg-orange-600/30 text-orange-400' : 'bg-blue-600/30 text-blue-400'
+                    }`}>
+                      {isMyTeam ? myTeamName : oppTeamName}
+                    </span>
+                    {/* 選手 */}
+                    <span className="text-sm text-white truncate flex-1">
+                      <span className="font-mono text-gray-400 mr-1">#{player?.number}</span>
+                      {player?.name}
+                    </span>
+                    {/* アクション */}
+                    <span className={`text-sm font-bold ${getActionColor(ev.action)}`}>
+                      {ACTION_LABEL_MAP[ev.action] || ev.action}
+                    </span>
+                  </div>
+                </button>
+
+                {/* 編集パネル */}
+                {isEditing && (
+                  <div className="bg-gray-800 px-4 py-3 border-b border-gray-700">
+                    <p className="text-xs text-gray-400 mb-2">変更先のアクションを選択：</p>
+                    <div className="grid grid-cols-6 gap-1.5 mb-3">
+                      {EDITABLE_ACTIONS.map((act) => (
+                        <button
+                          key={act}
+                          onClick={async () => {
+                            if (act !== ev.action) {
+                              await onUpdate(ev.id!, act);
+                            }
+                            setEditingId(null);
+                          }}
+                          className={`py-2 text-xs font-bold rounded transition-colors ${
+                            act === ev.action
+                              ? 'bg-white text-gray-900 ring-2 ring-white'
+                              : ['pts2', 'pts3', 'ft'].includes(act)
+                                ? 'bg-green-700 text-white'
+                                : ['miss2', 'miss3', 'missFt'].includes(act)
+                                  ? 'bg-gray-600 text-gray-200'
+                                  : 'bg-sky-700 text-white'
+                          }`}
+                        >
+                          {ACTION_LABEL_MAP[act]}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (confirm('この記録を削除しますか？')) {
+                          await onDelete(ev.id!);
+                          setEditingId(null);
+                        }
+                      }}
+                      className="w-full py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-bold rounded transition-colors"
+                    >
+                      この記録を削除
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
