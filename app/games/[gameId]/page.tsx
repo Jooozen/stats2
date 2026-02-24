@@ -570,7 +570,7 @@ export default function GameStatsPage() {
           </div>
         </div>
         {/* 2行目: Q選択 + タイマー */}
-        <div className="flex items-center justify-center gap-1.5 mt-1">
+        <div className="flex items-center justify-center gap-1.5">
           {QUARTER_LABELS.map((label, i) => (
             <button
               key={label}
@@ -645,7 +645,7 @@ export default function GameStatsPage() {
           </button>
         </div>
         {/* 3行目: 機能ボタン */}
-        <div className="flex items-center justify-center gap-2 mt-1">
+        <div className="flex items-center justify-center gap-2">
           <button onClick={() => setShowStats(true)} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-bold">
             スタッツ
           </button>
@@ -661,7 +661,7 @@ export default function GameStatsPage() {
         </div>
         {/* 4行目: タイムアウト残数 */}
         {categoryConfig && (
-          <div className="flex items-center justify-between mt-1 px-1">
+          <div className="flex items-center justify-between px-1">
             <button
               onClick={() => {
                 if (myTO.used >= myTO.max) { showFeedback('タイムアウト残り0回です'); return; }
@@ -788,8 +788,8 @@ export default function GameStatsPage() {
 
         {/* コート図（シュートゾーン選択） */}
         <div className="flex-shrink-0 border-t border-gray-700 relative">
-          <div className="flex items-center justify-center px-2 py-1">
-            <svg viewBox="0 0 300 280" className="w-full max-w-[340px]" style={{ maxHeight: '28vh' }}>
+          <div className="flex justify-center px-2 py-0.5">
+            <svg viewBox="0 0 300 280" className="w-full max-w-[340px]" style={{ maxHeight: '22vh' }}>
               {/* コート背景 */}
               <rect x="0" y="0" width="300" height="280" fill="#1a472a" rx="3" />
               {/* コート外枠 */}
@@ -858,29 +858,6 @@ export default function GameStatsPage() {
                 );
               })}
             </svg>
-            {/* コート右横: タイマー再生/停止ボタン */}
-            <div className="flex flex-col items-center gap-1 ml-1 flex-shrink-0">
-              <button
-                onClick={toggleTimer}
-                disabled={timerDisplay <= 0}
-                className={`w-12 h-12 rounded-lg flex items-center justify-center text-xl font-bold transition-colors ${
-                  timerRunning
-                    ? timerDisplay <= 60
-                      ? 'bg-red-700 text-white animate-pulse'
-                      : 'bg-yellow-600 text-white'
-                    : timerDisplay > 0
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {timerRunning ? '⏸' : '▶'}
-              </button>
-              <span className={`text-[10px] font-mono font-bold tabular-nums ${
-                timerRunning && timerDisplay <= 60 ? 'text-red-400' : 'text-gray-400'
-              }`}>
-                {formatTime(timerDisplay)}
-              </span>
-            </div>
           </div>
 
           {/* 成功/失敗 選択オーバーレイ */}
@@ -959,7 +936,7 @@ export default function GameStatsPage() {
             </button>
           ))}
         </div>
-        {/* 戻す・交代 */}
+        {/* 戻す・交代・タイマー */}
         <div className="flex gap-1">
           <button
             onClick={handleUndo}
@@ -972,6 +949,22 @@ export default function GameStatsPage() {
             className="flex-1 py-2 text-sm bg-teal-700 text-white font-bold rounded-lg transition-colors"
           >
             メンバーチェンジ
+          </button>
+          <button
+            onClick={toggleTimer}
+            disabled={timerDisplay <= 0}
+            className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1.5 transition-colors active:scale-95 ${
+              timerRunning
+                ? timerDisplay <= 60
+                  ? 'bg-red-700 text-white animate-pulse'
+                  : 'bg-yellow-600 text-white'
+                : timerDisplay > 0
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            <span className="text-base">{timerRunning ? '⏸' : '▶'}</span>
+            <span className="font-mono tabular-nums text-xs">{formatTime(timerDisplay)}</span>
           </button>
         </div>
       </div>
