@@ -1351,7 +1351,6 @@ function StartingLineupPanel({
   onConfirm: (selectedIds: number[]) => void;
   onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
 }) {
-  const myNamedPlayers = myPlayers.filter(p => p.name);
   const [mySelected, setMySelected] = useState<Set<number>>(new Set());
   const [oppSelected, setOppSelected] = useState<Set<number>>(new Set());
   const [addNumber, setAddNumber] = useState('');
@@ -1398,7 +1397,7 @@ function StartingLineupPanel({
             {myTeam?.name || '自チーム'} ({mySelected.size}/5)
           </h3>
           <div className="space-y-1">
-            {myNamedPlayers.map(player => (
+            {myPlayers.map(player => (
               <button
                 key={player.id}
                 onClick={() => toggleMy(player.id!)}
