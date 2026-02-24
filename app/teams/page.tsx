@@ -175,7 +175,7 @@ export default function TeamsPage() {
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <span className="text-sm text-gray-400">{expandedTeamId === team.id! ? '▲' : '▼'}</span>
                   {team.name}
-                  <span className="text-sm text-gray-500 font-normal">({(players[team.id!] || []).filter(p => p.name).length}人)</span>
+                  <span className="text-sm text-gray-500 font-normal">({(players[team.id!] || []).length}人)</span>
                 </h2>
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
@@ -253,7 +253,7 @@ export default function TeamsPage() {
                     ))
                   ) : (
                     /* 閲覧モード */
-                    (players[team.id!] || []).filter((p) => p.name).map((player) => (
+                    (players[team.id!] || []).map((player) => (
                       <div
                         key={player.id}
                         className="flex items-center justify-between bg-gray-700 rounded-lg px-4 py-3"
@@ -262,7 +262,7 @@ export default function TeamsPage() {
                           <span className="text-orange-400 font-mono font-bold mr-2">
                             #{player.number}
                           </span>
-                          {player.name}
+                          {player.name || <span className="text-gray-500 text-sm">名前未登録</span>}
                         </span>
                         <button
                           onClick={() => openShotChart(player)}
