@@ -112,18 +112,18 @@ export default function HomePage() {
       )}
 
       {/* 右下FAB */}
-      <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-3 items-end">
+      <div className="fixed bottom-24 right-6 z-40">
         {!hasTeams ? (
           <Link
             href="/teams"
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-7 rounded-full text-base shadow-xl shadow-orange-500/25 transition-all active:scale-95"
           >
             チーム登録
           </Link>
         ) : (
           <Link
             href="/games"
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-7 rounded-full text-base shadow-xl shadow-orange-500/25 transition-all active:scale-95"
           >
             ＋ 新規試合
           </Link>
