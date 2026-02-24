@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from './AuthProvider';
 
 const tabs = [
   { href: '/', label: 'ホーム', icon: '🏠' },
@@ -11,6 +12,7 @@ const tabs = [
 
 export default function Navigation() {
   const pathname = usePathname();
+  const { workspace, logout } = useAuth();
 
   // スタッツ記録画面ではナビゲーションを非表示
   if (pathname.match(/^\/games\/\d+$/) && !pathname.endsWith('/summary')) {
@@ -40,6 +42,15 @@ export default function Navigation() {
             </Link>
           );
         })}
+        {workspace && (
+          <button
+            onClick={logout}
+            className="flex flex-col items-center py-3 px-4 text-sm min-w-[64px] text-gray-500 hover:text-gray-300"
+          >
+            <span className="text-[10px] mb-0.5 truncate max-w-[56px]">{workspace.name}</span>
+            <span className="text-[10px]">ログアウト</span>
+          </button>
+        )}
       </div>
     </nav>
   );

@@ -120,8 +120,8 @@ export class BasketballDB extends Dexie {
   games!: Table<Game>;
   statEvents!: Table<StatEvent>;
 
-  constructor() {
-    super('BasketballStatsDB');
+  constructor(dbName: string = 'BasketballStatsDB') {
+    super(dbName);
     this.version(1).stores({
       teams: '++id, name, isMyTeam, createdAt',
       players: '++id, teamId, number, name',
@@ -137,7 +137,16 @@ export class BasketballDB extends Dexie {
   }
 }
 
-export const db = new BasketballDB();
+// ワークスペース別にDBを切り替え
+export let db: BasketballDB = new BasketballDB();
+
+export function switchDatabase(workspaceId: string) {
+  if (db.isOpen()) {
+    db.close();
+  }
+  const dbName = workspaceId ? `BasketballStatsDB_${workspaceId}` : 'BasketballStatsDB';
+  db = new BasketballDB(dbName);
+}
 
 // サンプルデータ投入（チームが1つもない場合のみ）
 export async function ensureExampleData() {

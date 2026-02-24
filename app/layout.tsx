@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Navigation from './Navigation';
+import AuthProvider from './AuthProvider';
 
 export const metadata: Metadata = {
   title: 'バスケスタッツ',
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body className="bg-gray-900 text-gray-200 min-h-screen pb-16">
-        <main className="max-w-7xl mx-auto">{children}</main>
-        <Navigation />
+        <AuthProvider>
+          <main className="max-w-7xl mx-auto">{children}</main>
+          <Navigation />
+        </AuthProvider>
       </body>
     </html>
   );
