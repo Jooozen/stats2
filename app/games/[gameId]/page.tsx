@@ -788,7 +788,7 @@ export default function GameStatsPage() {
 
         {/* コート図（シュートゾーン選択） */}
         <div className="flex-shrink-0 border-t border-gray-700 relative">
-          <div className="flex justify-center px-2 py-1">
+          <div className="flex items-center justify-center px-2 py-1">
             <svg viewBox="0 0 300 280" className="w-full max-w-[340px]" style={{ maxHeight: '28vh' }}>
               {/* コート背景 */}
               <rect x="0" y="0" width="300" height="280" fill="#1a472a" rx="3" />
@@ -858,6 +858,29 @@ export default function GameStatsPage() {
                 );
               })}
             </svg>
+            {/* コート右横: タイマー再生/停止ボタン */}
+            <div className="flex flex-col items-center gap-1 ml-1 flex-shrink-0">
+              <button
+                onClick={toggleTimer}
+                disabled={timerDisplay <= 0}
+                className={`w-12 h-12 rounded-lg flex items-center justify-center text-xl font-bold transition-colors ${
+                  timerRunning
+                    ? timerDisplay <= 60
+                      ? 'bg-red-700 text-white animate-pulse'
+                      : 'bg-yellow-600 text-white'
+                    : timerDisplay > 0
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {timerRunning ? '⏸' : '▶'}
+              </button>
+              <span className={`text-[10px] font-mono font-bold tabular-nums ${
+                timerRunning && timerDisplay <= 60 ? 'text-red-400' : 'text-gray-400'
+              }`}>
+                {formatTime(timerDisplay)}
+              </span>
+            </div>
           </div>
 
           {/* 成功/失敗 選択オーバーレイ */}
