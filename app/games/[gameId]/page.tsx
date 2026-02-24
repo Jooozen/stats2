@@ -126,7 +126,6 @@ export default function GameStatsPage() {
   const [showStats, setShowStats] = useState(false);
   const [statsTab, setStatsTab] = useState<'my' | 'opp'>('my');
   const [showMemberChange, setShowMemberChange] = useState(false);
-  const [memberTab, setMemberTab] = useState<'my' | 'opp'>('opp');
   const [showTimeline, setShowTimeline] = useState(false);
 
   // コートゾーン選択
@@ -475,6 +474,49 @@ export default function GameStatsPage() {
         update.onCourtOppSideIds = Array.from(nextOpp);
       }
       await db.games.update(game.id, update);
+    }
+    await reloadEvents();
+  }
+
+  // 紅白戦: A側↔B側のコート間選手入れ替え
+  async function handleCrossCourtSwap(myPlayerId: number, oppPlayerId: number) {
+    const gt = getGameTime();
+    const teamId = game!.myTeamId;
+
+    // サイド入れ替え（onCourtIdsは変わらない：両者ともコート上のまま）
+    const nextMy = new Set(onCourtMySideIds);
+    const nextOpp = new Set(onCourtOppSideIds);
+    nextMy.delete(myPlayerId);
+    nextMy.add(oppPlayerId);
+    nextOpp.delete(oppPlayerId);
+    nextOpp.add(myPlayerId);
+    setOnCourtMySideIds(nextMy);
+    setOnCourtOppSideIds(nextOpp);
+
+    // A側: myPlayer OUT, oppPlayer IN
+    await db.statEvents.add({
+      gameId, playerId: myPlayerId, teamId, quarter,
+      action: 'subOut', timestamp: new Date(), gameTime: gt,
+    });
+    await db.statEvents.add({
+      gameId, playerId: oppPlayerId, teamId, quarter,
+      action: 'subIn', timestamp: new Date(), gameTime: gt,
+    });
+    // B側: oppPlayer OUT, myPlayer IN
+    await db.statEvents.add({
+      gameId, playerId: oppPlayerId, teamId: -teamId, quarter,
+      action: 'subOut', timestamp: new Date(), gameTime: gt,
+    });
+    await db.statEvents.add({
+      gameId, playerId: myPlayerId, teamId: -teamId, quarter,
+      action: 'subIn', timestamp: new Date(), gameTime: gt,
+    });
+
+    if (game?.id) {
+      await db.games.update(game.id, {
+        onCourtMySideIds: Array.from(nextMy),
+        onCourtOppSideIds: Array.from(nextOpp),
+      });
     }
     await reloadEvents();
   }
@@ -1091,9 +1133,8 @@ export default function GameStatsPage() {
           onCourtMySideIds={onCourtMySideIds}
           onCourtOppSideIds={onCourtOppSideIds}
           isIntraSquad={isIntraSquad}
-          memberTab={memberTab}
-          setMemberTab={setMemberTab}
           onSubstitution={handleSubstitution}
+          onCrossCourtSwap={handleCrossCourtSwap}
           onAddPlayer={handleAddPlayer}
           onClose={() => setShowMemberChange(false)}
         />
@@ -1168,7 +1209,7 @@ function PlayerRow({
 }
 
 // ============================================================
-// MemberChangePanel（メンバーチェンジ - コート⇔ベンチ交代）
+// MemberChangePanel（メンバーチェンジ - 左右分割1画面）
 // ============================================================
 function MemberChangePanel({
   myTeam,
@@ -1181,9 +1222,8 @@ function MemberChangePanel({
   onCourtMySideIds,
   onCourtOppSideIds,
   isIntraSquad,
-  memberTab,
-  setMemberTab,
   onSubstitution,
+  onCrossCourtSwap,
   onAddPlayer,
   onClose,
 }: {
@@ -1197,72 +1237,95 @@ function MemberChangePanel({
   onCourtMySideIds: Set<number>;
   onCourtOppSideIds: Set<number>;
   isIntraSquad: boolean;
-  memberTab: 'my' | 'opp';
-  setMemberTab: (tab: 'my' | 'opp') => void;
   onSubstitution: (outId: number, inId: number, teamId: number, side?: 'my' | 'opp') => Promise<void>;
+  onCrossCourtSwap: (myPlayerId: number, oppPlayerId: number) => Promise<void>;
   onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [selectedOutId, setSelectedOutId] = useState<number | null>(null);
-  const [selectedInId, setSelectedInId] = useState<number | null>(null);
+  // 各サイド独立の選択状態
+  const [myOutId, setMyOutId] = useState<number | null>(null);
+  const [myInId, setMyInId] = useState<number | null>(null);
+  const [oppOutId, setOppOutId] = useState<number | null>(null);
+  const [oppInId, setOppInId] = useState<number | null>(null);
+
+  // 選手追加フォーム
   const [newNumber, setNewNumber] = useState('');
   const [newName, setNewName] = useState('');
   const [addMessage, setAddMessage] = useState('');
 
-  const teamId = memberTab === 'my' ? myTeamId : opponentTeamId;
-  const players = memberTab === 'my' ? myPlayers : opponentPlayers;
+  // コート・ベンチ算出
+  const myCourt = myPlayers.filter(p => (isIntraSquad ? onCourtMySideIds : onCourtIds).has(p.id!));
+  const oppCourt = isIntraSquad
+    ? opponentPlayers.filter(p => onCourtOppSideIds.has(p.id!))
+    : opponentPlayers.filter(p => onCourtIds.has(p.id!));
+  const myBench = isIntraSquad
+    ? myPlayers.filter(p => !onCourtMySideIds.has(p.id!) && !onCourtOppSideIds.has(p.id!))
+    : myPlayers.filter(p => !onCourtIds.has(p.id!));
+  const oppBench = isIntraSquad
+    ? myBench // 紅白戦: ベンチは共通
+    : opponentPlayers.filter(p => !onCourtIds.has(p.id!));
 
-  // 紅白戦時はサイド別、通常時はonCourtIds
-  const sideCourtIds = isIntraSquad
-    ? (memberTab === 'my' ? onCourtMySideIds : onCourtOppSideIds)
-    : onCourtIds;
-  const otherSideCourtIds = isIntraSquad
-    ? (memberTab === 'my' ? onCourtOppSideIds : onCourtMySideIds)
-    : new Set<number>();
-  const onCourt = players.filter(p => sideCourtIds.has(p.id!));
-  // ベンチ: コートにいない選手。紅白戦時は相手側コートの選手も除外
-  const bench = players.filter(p => !sideCourtIds.has(p.id!) && !otherSideCourtIds.has(p.id!));
-
-  function switchTab(tab: 'my' | 'opp') {
-    setMemberTab(tab);
-    setSelectedOutId(null);
-    setSelectedInId(null);
-    setNewNumber('');
-    setNewName('');
-    setAddMessage('');
+  // ── A側の交代ロジック ──
+  function selectMyOut(id: number) {
+    const next = myOutId === id ? null : id;
+    setMyOutId(next);
+    if (next && myInId) {
+      onSubstitution(next, myInId, myTeamId, isIntraSquad ? 'my' : undefined);
+      setMyOutId(null); setMyInId(null);
+    }
   }
-
-  function selectOut(id: number) {
-    const newOut = selectedOutId === id ? null : id;
-    setSelectedOutId(newOut);
-    // 両方揃ったら即交代
-    if (newOut && selectedInId) {
-      doSwap(newOut, selectedInId);
+  function selectMyIn(id: number) {
+    const next = myInId === id ? null : id;
+    setMyInId(next);
+    if (myOutId && next) {
+      onSubstitution(myOutId, next, myTeamId, isIntraSquad ? 'my' : undefined);
+      setMyOutId(null); setMyInId(null);
     }
   }
 
-  function selectIn(id: number) {
-    const newIn = selectedInId === id ? null : id;
-    setSelectedInId(newIn);
-    // 両方揃ったら即交代
-    if (selectedOutId && newIn) {
-      doSwap(selectedOutId, newIn);
+  // ── B側の交代ロジック ──
+  function selectOppOut(id: number) {
+    const next = oppOutId === id ? null : id;
+    setOppOutId(next);
+    if (next && oppInId) {
+      const tid = isIntraSquad ? myTeamId : opponentTeamId;
+      onSubstitution(next, oppInId, tid, isIntraSquad ? 'opp' : undefined);
+      setOppOutId(null); setOppInId(null);
+    }
+  }
+  function selectOppIn(id: number) {
+    const next = oppInId === id ? null : id;
+    setOppInId(next);
+    if (oppOutId && next) {
+      const tid = isIntraSquad ? myTeamId : opponentTeamId;
+      onSubstitution(oppOutId, next, tid, isIntraSquad ? 'opp' : undefined);
+      setOppOutId(null); setOppInId(null);
     }
   }
 
-  async function doSwap(outId: number, inId: number) {
-    await onSubstitution(outId, inId, teamId, memberTab);
-    setSelectedOutId(null);
-    setSelectedInId(null);
+  // ── 紅白戦: コート間入れ替え ──
+  function doCrossSwapFromMy(oppPlayerId: number) {
+    if (myOutId) {
+      onCrossCourtSwap(myOutId, oppPlayerId);
+      setMyOutId(null);
+    }
+  }
+  function doCrossSwapFromOpp(myPlayerId: number) {
+    if (oppOutId) {
+      onCrossCourtSwap(myPlayerId, oppOutId);
+      setOppOutId(null);
+    }
   }
 
-  async function handleAdd() {
+  // ── 選手追加 ──
+  async function handleAdd(side: 'my' | 'opp') {
     const num = parseInt(newNumber);
     if (isNaN(num)) {
       setAddMessage('背番号を入力してください');
       setTimeout(() => setAddMessage(''), 2000);
       return;
     }
+    const players = side === 'my' ? myPlayers : opponentPlayers;
     const exists = players.some(p => p.number === num);
     if (exists) {
       setAddMessage(`#${num} は既に登録されています`);
@@ -1270,11 +1333,58 @@ function MemberChangePanel({
       return;
     }
     const name = newName.trim() || `選手${num}`;
-    await onAddPlayer(teamId, num, name);
+    const tid = side === 'my' ? myTeamId : opponentTeamId;
+    await onAddPlayer(tid, num, name);
     setNewNumber('');
     setNewName('');
     setAddMessage(`#${num} ${name} を追加しました`);
     setTimeout(() => setAddMessage(''), 2000);
+  }
+
+  // ── コート選手ボタン ──
+  function renderCourtPlayer(player: Player, isOut: boolean, waitingForOut: boolean, onTap: () => void) {
+    return (
+      <button
+        key={player.id}
+        onClick={onTap}
+        className={`w-full text-left px-2 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
+          isOut
+            ? 'bg-red-600 text-white ring-2 ring-red-400'
+            : waitingForOut
+              ? 'bg-gray-800 text-white active:bg-red-700 border border-red-600'
+              : 'bg-gray-800 text-white active:bg-gray-700'
+        }`}
+      >
+        <span>
+          <span className="font-mono font-bold text-gray-400 mr-1">#{player.number}</span>
+          {player.name}
+        </span>
+        {isOut && <span className="text-[10px] font-bold bg-red-800 px-1.5 py-0.5 rounded">OUT</span>}
+      </button>
+    );
+  }
+
+  // ── ベンチ選手ボタン ──
+  function renderBenchPlayer(player: Player, isIn: boolean, waitingForIn: boolean, onTap: () => void) {
+    return (
+      <button
+        key={player.id}
+        onClick={onTap}
+        className={`w-full text-left px-2 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
+          isIn
+            ? 'bg-green-600 text-white ring-2 ring-green-400'
+            : waitingForIn
+              ? 'bg-gray-800 text-white active:bg-green-700 border border-green-700'
+              : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+        }`}
+      >
+        <span>
+          <span className="font-mono font-bold text-gray-500 mr-1">#{player.number}</span>
+          {player.name}
+        </span>
+        {isIn && <span className="text-[10px] font-bold bg-green-800 px-1.5 py-0.5 rounded">IN</span>}
+      </button>
+    );
   }
 
   return (
@@ -1287,132 +1397,184 @@ function MemberChangePanel({
         </button>
       </div>
 
-      {/* タブ */}
-      <div className="flex bg-gray-800 border-b border-gray-700">
-        <button
-          onClick={() => switchTab('my')}
-          className={`flex-1 py-2 text-sm font-bold text-center transition-colors ${
-            memberTab === 'my' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          {isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')}
-        </button>
-        <button
-          onClick={() => switchTab('opp')}
-          className={`flex-1 py-2 text-sm font-bold text-center transition-colors ${
-            memberTab === 'opp' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          {isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')}
-        </button>
+      {/* 2カラムレイアウト */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* ── A側 / 自チーム ── */}
+        <div className="flex-1 border-r border-gray-700 overflow-y-auto px-2 py-2 space-y-2">
+          <h3 className="text-center text-xs font-bold text-orange-400 sticky top-0 bg-black/80 py-1 z-10">
+            {isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')}
+          </h3>
+
+          {/* コート上 */}
+          <div>
+            <p className="text-[10px] text-gray-400 mb-1 font-bold">
+              コート（{myCourt.length}）
+              {myOutId && !myInId && <span className="text-green-400 ml-1">→ IN選択</span>}
+            </p>
+            <div className="space-y-1">
+              {myCourt.map(player => renderCourtPlayer(
+                player,
+                myOutId === player.id,
+                myInId !== null && myOutId === null,
+                () => selectMyOut(player.id!)
+              ))}
+            </div>
+          </div>
+
+          {/* ベンチ */}
+          <div>
+            <p className="text-[10px] text-gray-400 mb-1 font-bold">
+              ベンチ（{myBench.length}）
+              {myOutId && !myInId && <span className="text-green-400 ml-1">← IN選択</span>}
+            </p>
+            <div className="space-y-1">
+              {myBench.map(player => renderBenchPlayer(
+                player,
+                myInId === player.id,
+                myOutId !== null && myInId === null,
+                () => selectMyIn(player.id!)
+              ))}
+              {myBench.length === 0 && (
+                <p className="text-[10px] text-gray-500 py-1">ベンチなし</p>
+              )}
+            </div>
+          </div>
+
+          {/* 紅白戦: B側コートと入れ替え */}
+          {isIntraSquad && myOutId && (
+            <div className="border-t border-purple-800 pt-2">
+              <p className="text-[10px] text-purple-400 mb-1 font-bold">↔ B側コートと入れ替え</p>
+              <div className="space-y-1">
+                {oppCourt.map(player => (
+                  <button
+                    key={player.id}
+                    onClick={() => doCrossSwapFromMy(player.id!)}
+                    className="w-full text-left px-2 py-2 rounded-lg text-xs font-medium flex items-center justify-between bg-gray-800 text-purple-300 active:bg-purple-700 border border-purple-700 transition-colors"
+                  >
+                    <span>
+                      <span className="font-mono font-bold text-purple-500 mr-1">#{player.number}</span>
+                      {player.name}
+                    </span>
+                    <span className="text-[10px] text-purple-400 font-bold">↔</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 選手追加（通常試合のみ。紅白戦は下部に共通フォーム） */}
+          {!isIntraSquad && (
+            <div className="border-t border-gray-700 pt-2">
+              <p className="text-[10px] text-gray-400 mb-1">選手追加</p>
+              <div className="flex gap-1">
+                <input type="number" value={newNumber} onChange={e => setNewNumber(e.target.value)}
+                  placeholder="番号" className="w-14 bg-gray-700 text-white rounded px-1.5 py-1.5 text-xs text-center placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500" inputMode="numeric" />
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAdd('my')}
+                  placeholder="名前" className="flex-1 bg-gray-700 text-white rounded px-1.5 py-1.5 text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500 min-w-0" />
+                <button onClick={() => handleAdd('my')} className="px-2 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold rounded whitespace-nowrap">追加</button>
+              </div>
+              {addMessage && <p className="text-[10px] text-green-400 mt-1 font-bold">{addMessage}</p>}
+            </div>
+          )}
+        </div>
+
+        {/* ── B側 / 相手チーム ── */}
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
+          <h3 className="text-center text-xs font-bold text-blue-400 sticky top-0 bg-black/80 py-1 z-10">
+            {isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')}
+          </h3>
+
+          {/* コート上 */}
+          <div>
+            <p className="text-[10px] text-gray-400 mb-1 font-bold">
+              コート（{oppCourt.length}）
+              {oppOutId && !oppInId && <span className="text-green-400 ml-1">→ IN選択</span>}
+            </p>
+            <div className="space-y-1">
+              {oppCourt.map(player => renderCourtPlayer(
+                player,
+                oppOutId === player.id,
+                oppInId !== null && oppOutId === null,
+                () => selectOppOut(player.id!)
+              ))}
+            </div>
+          </div>
+
+          {/* ベンチ */}
+          <div>
+            <p className="text-[10px] text-gray-400 mb-1 font-bold">
+              ベンチ（{oppBench.length}）
+              {oppOutId && !oppInId && <span className="text-green-400 ml-1">← IN選択</span>}
+            </p>
+            <div className="space-y-1">
+              {oppBench.map(player => renderBenchPlayer(
+                player,
+                oppInId === player.id,
+                oppOutId !== null && oppInId === null,
+                () => selectOppIn(player.id!)
+              ))}
+              {oppBench.length === 0 && (
+                <p className="text-[10px] text-gray-500 py-1">ベンチなし</p>
+              )}
+            </div>
+          </div>
+
+          {/* 紅白戦: A側コートと入れ替え */}
+          {isIntraSquad && oppOutId && (
+            <div className="border-t border-purple-800 pt-2">
+              <p className="text-[10px] text-purple-400 mb-1 font-bold">↔ A側コートと入れ替え</p>
+              <div className="space-y-1">
+                {myCourt.map(player => (
+                  <button
+                    key={player.id}
+                    onClick={() => doCrossSwapFromOpp(player.id!)}
+                    className="w-full text-left px-2 py-2 rounded-lg text-xs font-medium flex items-center justify-between bg-gray-800 text-purple-300 active:bg-purple-700 border border-purple-700 transition-colors"
+                  >
+                    <span>
+                      <span className="font-mono font-bold text-purple-500 mr-1">#{player.number}</span>
+                      {player.name}
+                    </span>
+                    <span className="text-[10px] text-purple-400 font-bold">↔</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 選手追加（通常試合のみ） */}
+          {!isIntraSquad && (
+            <div className="border-t border-gray-700 pt-2">
+              <p className="text-[10px] text-gray-400 mb-1">選手追加</p>
+              <div className="flex gap-1">
+                <input type="number" value={newNumber} onChange={e => setNewNumber(e.target.value)}
+                  placeholder="番号" className="w-14 bg-gray-700 text-white rounded px-1.5 py-1.5 text-xs text-center placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500" inputMode="numeric" />
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAdd('opp')}
+                  placeholder="名前" className="flex-1 bg-gray-700 text-white rounded px-1.5 py-1.5 text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0" />
+                <button onClick={() => handleAdd('opp')} className="px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded whitespace-nowrap">追加</button>
+              </div>
+              {addMessage && <p className="text-[10px] text-green-400 mt-1 font-bold">{addMessage}</p>}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-        {/* コート上 */}
-        <div>
-          <p className="text-xs text-gray-400 mb-2 font-bold">
-            コート上（{onCourt.length}人）
-            {!selectedOutId && !selectedInId && <span className="text-gray-500 ml-1">← 選手をタップ</span>}
-            {selectedInId && !selectedOutId && <span className="text-red-400 ml-1">← OUTする選手を選択</span>}
-          </p>
-          <div className="space-y-1">
-            {onCourt.map(player => {
-              const isOut = selectedOutId === player.id;
-              const waitingForOut = selectedInId !== null && !selectedOutId;
-              return (
-                <button
-                  key={player.id}
-                  onClick={() => selectOut(player.id!)}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
-                    isOut
-                      ? 'bg-red-600 text-white ring-2 ring-red-400'
-                      : waitingForOut
-                        ? 'bg-gray-800 text-white active:bg-red-700 border border-red-600'
-                        : 'bg-gray-800 text-white active:bg-gray-700'
-                  }`}
-                >
-                  <span>
-                    <span className="font-mono font-bold text-gray-400 mr-2">#{player.number}</span>
-                    {player.name}
-                  </span>
-                  {isOut && <span className="text-xs font-bold bg-red-800 px-2 py-0.5 rounded">OUT</span>}
-                  {waitingForOut && !isOut && <span className="text-xs text-red-400 font-bold">OUT</span>}
-                </button>
-              );
-            })}
+      {/* 紅白戦: 選手追加（共通フォーム） */}
+      {isIntraSquad && (
+        <div className="bg-gray-800 border-t border-gray-700 px-4 py-2">
+          <p className="text-[10px] text-gray-400 mb-1">選手を追加（名前は省略可）</p>
+          <div className="flex gap-1.5">
+            <input type="number" value={newNumber} onChange={e => setNewNumber(e.target.value)}
+              placeholder="番号" className="w-16 bg-gray-700 text-white rounded px-2 py-1.5 text-xs text-center placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500" inputMode="numeric" />
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd('my')}
+              placeholder="名前" className="flex-1 bg-gray-700 text-white rounded px-2 py-1.5 text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500 min-w-0" />
+            <button onClick={() => handleAdd('my')} className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded whitespace-nowrap">追加</button>
           </div>
+          {addMessage && <p className="text-[10px] text-green-400 mt-1 font-bold">{addMessage}</p>}
         </div>
-
-        {/* 交代矢印 */}
-        {(selectedOutId !== null || selectedInId !== null) && (
-          <div className="text-center text-gray-400 text-sm font-bold py-1">↕ 交代</div>
-        )}
-
-        {/* ベンチ */}
-        <div>
-          <p className="text-xs text-gray-400 mb-2 font-bold">
-            ベンチ（{bench.length}人）
-            {!selectedOutId && !selectedInId && <span className="text-gray-500 ml-1">← 選手をタップ</span>}
-            {selectedOutId && !selectedInId && <span className="text-green-400 ml-1">← INする選手を選択</span>}
-          </p>
-          <div className="space-y-1">
-            {bench.map(player => {
-              const isIn = selectedInId === player.id;
-              const waitingForIn = selectedOutId !== null && !selectedInId;
-              return (
-                <button
-                  key={player.id}
-                  onClick={() => selectIn(player.id!)}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
-                    isIn
-                      ? 'bg-green-600 text-white ring-2 ring-green-400'
-                      : waitingForIn
-                        ? 'bg-gray-800 text-white active:bg-green-700 border border-green-700'
-                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
-                  }`}
-                >
-                  <span>
-                    <span className="font-mono font-bold text-gray-500 mr-2">#{player.number}</span>
-                    {player.name}
-                  </span>
-                  {isIn && <span className="text-xs font-bold bg-green-800 px-2 py-0.5 rounded">IN</span>}
-                  {waitingForIn && !isIn && <span className="text-xs text-green-400 font-bold">IN</span>}
-                </button>
-              );
-            })}
-            {bench.length === 0 && (
-              <p className="text-xs text-gray-500 py-2">ベンチに選手がいません。下の追加フォームから登録できます。</p>
-            )}
-          </div>
-        </div>
-
-        {/* 選手追加 */}
-        <div className="border-t border-gray-700 pt-3">
-          <p className="text-xs text-gray-400 mb-2">選手を追加（名前は省略可）</p>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={newNumber}
-              onChange={e => setNewNumber(e.target.value)}
-              placeholder="番号"
-              className="w-20 bg-gray-700 text-white rounded-lg px-3 py-2 text-center text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              inputMode="numeric"
-            />
-            <input
-              type="text"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder="名前"
-              className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-            <button onClick={handleAdd} className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg whitespace-nowrap">
-              追加
-            </button>
-          </div>
-          {addMessage && <p className="text-xs text-green-400 mt-1.5 font-bold">{addMessage}</p>}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
