@@ -1037,7 +1037,9 @@ export default function GameStatsPage() {
           opponentTeam={opponentTeam}
           myPlayers={myPlayers}
           opponentPlayers={opponentPlayers}
+          opponentTeamId={game.opponentTeamId}
           onConfirm={confirmStartingLineup}
+          onAddPlayer={handleAddPlayer}
         />
       )}
     </div>
@@ -1132,7 +1134,7 @@ function MemberChangePanel({
   const teamId = memberTab === 'my' ? myTeamId : opponentTeamId;
   const players = memberTab === 'my' ? myPlayers : opponentPlayers;
   const onCourt = players.filter(p => onCourtIds.has(p.id!));
-  const bench = players.filter(p => !onCourtIds.has(p.id!) && p.name);
+  const bench = players.filter(p => !onCourtIds.has(p.id!));
 
   function switchTab(tab: 'my' | 'opp') {
     setMemberTab(tab);
@@ -1302,18 +1304,22 @@ function StartingLineupPanel({
   opponentTeam,
   myPlayers,
   opponentPlayers,
+  opponentTeamId,
   onConfirm,
+  onAddPlayer,
 }: {
   myTeam: Team | null;
   opponentTeam: Team | null;
   myPlayers: Player[];
   opponentPlayers: Player[];
+  opponentTeamId: number;
   onConfirm: (selectedIds: number[]) => void;
+  onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
 }) {
-  const namedMy = myPlayers.filter(p => p.name);
-  const namedOpp = opponentPlayers.filter(p => p.name);
+  const myNamedPlayers = myPlayers.filter(p => p.name);
   const [mySelected, setMySelected] = useState<Set<number>>(new Set());
   const [oppSelected, setOppSelected] = useState<Set<number>>(new Set());
+  const [addNumber, setAddNumber] = useState('');
 
   function toggleMy(id: number) {
     const next = new Set(mySelected);
@@ -1327,6 +1333,18 @@ function StartingLineupPanel({
     if (next.has(id)) next.delete(id);
     else if (next.size < 5) next.add(id);
     setOppSelected(next);
+  }
+
+  async function handleQuickAdd() {
+    const num = parseInt(addNumber);
+    if (isNaN(num)) return;
+    const exists = opponentPlayers.some(p => p.number === num);
+    if (exists) {
+      setAddNumber('');
+      return;
+    }
+    await onAddPlayer(opponentTeamId, num, '');
+    setAddNumber('');
   }
 
   const canConfirm = mySelected.size === 5 && oppSelected.size === 5;
@@ -1345,7 +1363,7 @@ function StartingLineupPanel({
             {myTeam?.name || '自チーム'} ({mySelected.size}/5)
           </h3>
           <div className="space-y-1">
-            {namedMy.map(player => (
+            {myNamedPlayers.map(player => (
               <button
                 key={player.id}
                 onClick={() => toggleMy(player.id!)}
@@ -1367,8 +1385,26 @@ function StartingLineupPanel({
           <h3 className="text-center text-sm font-bold text-blue-400 mb-2 sticky top-0 bg-black/80 py-1 z-10">
             {opponentTeam?.name || '相手'} ({oppSelected.size}/5)
           </h3>
+          {/* 背番号クイック追加 */}
+          <div className="flex gap-1 mb-2">
+            <input
+              type="number"
+              value={addNumber}
+              onChange={e => setAddNumber(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleQuickAdd()}
+              placeholder="背番号"
+              className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              inputMode="numeric"
+            />
+            <button
+              onClick={handleQuickAdd}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg whitespace-nowrap"
+            >
+              追加
+            </button>
+          </div>
           <div className="space-y-1">
-            {namedOpp.map(player => (
+            {opponentPlayers.map(player => (
               <button
                 key={player.id}
                 onClick={() => toggleOpp(player.id!)}
