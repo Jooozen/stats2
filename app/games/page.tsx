@@ -34,6 +34,7 @@ export default function GamesPage() {
 
   // 新規試合作成フォーム
   const [selectedMyTeamId, setSelectedMyTeamId] = useState<number | null>(null);
+  const [gameTitle, setGameTitle] = useState('');
   const [gameDate, setGameDate] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -179,6 +180,7 @@ export default function GamesPage() {
     const gameId = await db.games.add({
       myTeamId: selectedMyTeamId,
       opponentTeamId,
+      title: gameTitle.trim() || undefined,
       date: new Date(gameDate),
       status: 'live',
       currentQuarter: 1,
@@ -253,6 +255,18 @@ export default function GamesPage() {
               </select>
             </div>
 
+            {/* 試合タイトル */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">試合タイトル</label>
+              <input
+                type="text"
+                value={gameTitle}
+                onChange={(e) => setGameTitle(e.target.value)}
+                placeholder="例: 練習試合、インターハイ予選 など"
+                className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-base placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+
             {/* 試合日 */}
             <div>
               <label className="block text-sm text-gray-400 mb-1">試合日</label>
@@ -260,7 +274,7 @@ export default function GamesPage() {
                 type="date"
                 value={gameDate}
                 onChange={(e) => setGameDate(e.target.value)}
-                className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none [&::-webkit-date-and-time-value]:text-left"
               />
             </div>
 
@@ -452,6 +466,9 @@ export default function GamesPage() {
             >
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-400">
+                  {detail.game.title && (
+                    <span className="text-gray-300 mr-2">{detail.game.title}</span>
+                  )}
                   {new Date(detail.game.date).toLocaleDateString('ja-JP')}
                 </div>
                 <div

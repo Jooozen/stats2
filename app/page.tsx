@@ -106,6 +106,9 @@ export default function HomePage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-400">
+                    {detail.game.title && (
+                      <span className="text-gray-300 mr-2">{detail.game.title}</span>
+                    )}
                     {new Date(detail.game.date).toLocaleDateString('ja-JP')}
                   </div>
                   <div

@@ -140,18 +140,18 @@ export default function TeamsPage() {
       {/* チーム追加 */}
       <div className="bg-gray-800 rounded-xl p-5 mb-6">
         <h2 className="text-lg font-semibold mb-3">新しいチームを作成</h2>
-        <div className="flex gap-3">
+        <div className="space-y-3">
           <input
             type="text"
             value={newTeamName}
             onChange={(e) => setNewTeamName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addTeam()}
             placeholder="チーム名を入力"
-            className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-3 text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
           <button
             onClick={addTeam}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-lg text-lg transition-colors whitespace-nowrap"
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg text-lg transition-colors"
           >
             ＋ 追加
           </button>

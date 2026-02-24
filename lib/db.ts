@@ -50,6 +50,7 @@ export interface Game {
   id?: number;
   myTeamId: number;
   opponentTeamId: number;
+  title?: string;
   date: Date;
   status: 'live' | 'finished';
   currentQuarter: number;
