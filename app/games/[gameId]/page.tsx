@@ -98,6 +98,9 @@ export default function GameStatsPage() {
   // 選択サイド（同一チーム対戦時に左右を区別）
   const [selectedSide, setSelectedSide] = useState<'my' | 'opp' | null>(null);
 
+  // ポゼッション（攻撃権）: 'my' = 自チーム攻撃, 'opp' = 相手攻撃
+  const [possession, setPossession] = useState<'my' | 'opp'>('my');
+
   // タイマー（カウントダウン）
   const [timerDisplay, setTimerDisplay] = useState(600); // 残り秒数
   const [timerRunning, setTimerRunning] = useState(false);
@@ -609,7 +612,16 @@ export default function GameStatsPage() {
             )}
           </div>
           <span className="text-3xl font-bold tabular-nums text-white">{myScore}</span>
-          <span className="text-lg text-gray-500">-</span>
+          <button
+            onClick={() => setPossession(p => p === 'my' ? 'opp' : 'my')}
+            className={`px-1.5 py-0.5 rounded transition-colors text-lg ${
+              possession === 'my'
+                ? 'text-orange-400'
+                : 'text-blue-400'
+            }`}
+          >
+            {possession === 'my' ? '◀' : '▶'}
+          </button>
           <span className="text-3xl font-bold tabular-nums text-white">{opponentScore}</span>
           <div className="flex items-center gap-1">
             {oppTeamQFouls > 0 && (
