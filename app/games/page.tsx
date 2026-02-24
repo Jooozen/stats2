@@ -202,24 +202,31 @@ export default function GamesPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">試合</h1>
-        {showCreate && (
-          <button
-            onClick={() => setShowCreate(false)}
-            className="bg-gray-600 hover:bg-gray-500 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-          >
-            閉じる
-          </button>
-        )}
-      </div>
+      <h1 className="text-2xl font-bold mb-6">試合</h1>
 
-      {myTeams.length === 0 && (
+      {myTeams.length === 0 ? (
         <div className="bg-gray-800 rounded-xl p-8 text-center mb-6">
           <p className="text-gray-300 mb-4">
             試合を作成するにはまずチームを登録してください
           </p>
+          <Link
+            href="/teams"
+            className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors active:scale-95"
+          >
+            チーム登録
+          </Link>
         </div>
+      ) : (
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          className={`w-full font-bold py-4 rounded-xl text-center text-lg mb-6 transition-colors active:scale-[0.98] ${
+            showCreate
+              ? 'bg-gray-600 hover:bg-gray-500 text-white'
+              : 'bg-orange-500 hover:bg-orange-600 text-white'
+          }`}
+        >
+          {showCreate ? '閉じる' : '＋ 新規試合'}
+        </button>
       )}
 
       {/* 新規試合作成フォーム */}
@@ -473,26 +480,6 @@ export default function GamesPage() {
         </div>
       )}
 
-      {/* 右下FAB */}
-      {!showCreate && (
-        <div className="fixed bottom-20 right-4 z-40">
-          {myTeams.length > 0 ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
-            >
-              ＋ 新規試合
-            </button>
-          ) : (
-            <Link
-              href="/teams"
-              className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg shadow-orange-500/30 transition-colors"
-            >
-              チーム登録
-            </Link>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -66,13 +66,27 @@ export default function TeamsPage() {
 
   async function addTeam() {
     if (!newTeamName.trim()) return;
-    await db.teams.add({
+    const teamId = await db.teams.add({
       name: newTeamName.trim(),
       isMyTeam: true,
       createdAt: new Date(),
-    });
+    }) as number;
+
+    // デフォルトで背番号4〜18の選手枠を作成（名前だけ入力すればOK）
+    const defaultNumbers = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    for (const num of defaultNumbers) {
+      await db.players.add({
+        teamId,
+        number: num,
+        name: '',
+      });
+    }
+
     setNewTeamName('');
-    loadTeams();
+    // 作成したチームを自動展開＋選手管理モードに
+    setExpandedTeamId(teamId);
+    setEditingTeamId(teamId);
+    await loadTeams();
   }
 
   async function deleteTeam(teamId: number) {
@@ -110,7 +124,7 @@ export default function TeamsPage() {
   async function saveEditPlayer() {
     if (!editingPlayer?.id) return;
     const num = parseInt(editPlayerNumber);
-    if (!editPlayerName.trim() || isNaN(num)) return;
+    if (isNaN(num)) return;
     await db.players.update(editingPlayer.id, {
       name: editPlayerName.trim(),
       number: num,
@@ -161,7 +175,7 @@ export default function TeamsPage() {
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <span className="text-sm text-gray-400">{expandedTeamId === team.id! ? '▲' : '▼'}</span>
                   {team.name}
-                  <span className="text-sm text-gray-500 font-normal">({(players[team.id!] || []).length}人)</span>
+                  <span className="text-sm text-gray-500 font-normal">({(players[team.id!] || []).filter(p => p.name).length}人)</span>
                 </h2>
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
@@ -186,70 +200,79 @@ export default function TeamsPage() {
               {/* 選手リスト（展開時のみ表示） */}
               {expandedTeamId === team.id! && (
                 <div className="space-y-2 px-5 pb-5">
-                  {(players[team.id!] || []).map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between bg-gray-700 rounded-lg px-4 py-3"
-                    >
-                      {editingPlayer?.id === player.id ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <input
-                            type="number"
-                            value={editPlayerNumber}
-                            onChange={(e) => setEditPlayerNumber(e.target.value)}
-                            className="w-20 bg-gray-600 text-white rounded px-3 py-2 text-center"
-                          />
-                          <input
-                            type="text"
-                            value={editPlayerName}
-                            onChange={(e) => setEditPlayerName(e.target.value)}
-                            className="flex-1 bg-gray-600 text-white rounded px-3 py-2"
-                          />
-                          <button
-                            onClick={saveEditPlayer}
-                            className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-sm"
-                          >
-                            保存
-                          </button>
-                          <button
-                            onClick={() => setEditingPlayer(null)}
-                            className="bg-gray-500 hover:bg-gray-400 px-3 py-2 rounded text-sm"
-                          >
-                            取消
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-lg">
-                            <span className="text-orange-400 font-mono font-bold mr-2">
+                  {editingTeamId === team.id! ? (
+                    /* 選手管理モード: インライン編集 */
+                    (players[team.id!] || []).map((player) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center gap-2 bg-gray-700 rounded-lg px-4 py-2"
+                      >
+                        {editingPlayer?.id === player.id ? (
+                          <>
+                            <input
+                              type="number"
+                              value={editPlayerNumber}
+                              onChange={(e) => setEditPlayerNumber(e.target.value)}
+                              className="w-16 bg-gray-600 text-white rounded px-2 py-2 text-center text-sm"
+                            />
+                            <input
+                              type="text"
+                              value={editPlayerName}
+                              onChange={(e) => setEditPlayerName(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && saveEditPlayer()}
+                              className="flex-1 bg-gray-600 text-white rounded px-3 py-2 text-sm"
+                              autoFocus
+                            />
+                            <button onClick={saveEditPlayer} className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-xs">保存</button>
+                            <button onClick={() => setEditingPlayer(null)} className="bg-gray-500 hover:bg-gray-400 px-3 py-2 rounded text-xs">取消</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-orange-400 font-mono font-bold text-sm w-10 text-center shrink-0">
                               #{player.number}
                             </span>
-                            {player.name}
-                          </span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => openShotChart(player)}
-                              className="text-sm text-sky-400 hover:text-sky-300 px-2 py-1"
-                            >
-                              詳細
-                            </button>
                             <button
                               onClick={() => startEditPlayer(player)}
-                              className="text-sm text-gray-300 hover:text-white px-2 py-1"
+                              className={`flex-1 text-left px-3 py-2 rounded text-sm transition-colors ${
+                                player.name
+                                  ? 'text-white hover:bg-gray-600'
+                                  : 'text-gray-500 bg-gray-600/50 hover:bg-gray-600'
+                              }`}
                             >
-                              編集
+                              {player.name || '名前を入力...'}
                             </button>
                             <button
                               onClick={() => deletePlayer(player.id!)}
-                              className="text-sm text-red-400 hover:text-red-300 px-2 py-1"
+                              className="text-xs text-red-400 hover:text-red-300 px-2 py-1 shrink-0"
                             >
                               削除
                             </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                          </>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    /* 閲覧モード */
+                    (players[team.id!] || []).filter((p) => p.name).map((player) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between bg-gray-700 rounded-lg px-4 py-3"
+                      >
+                        <span className="text-lg">
+                          <span className="text-orange-400 font-mono font-bold mr-2">
+                            #{player.number}
+                          </span>
+                          {player.name}
+                        </span>
+                        <button
+                          onClick={() => openShotChart(player)}
+                          className="text-sm text-sky-400 hover:text-sky-300 px-2 py-1"
+                        >
+                          詳細
+                        </button>
+                      </div>
+                    ))
+                  )}
 
                   {/* 選手追加フォーム */}
                   {editingTeamId === team.id! && (
