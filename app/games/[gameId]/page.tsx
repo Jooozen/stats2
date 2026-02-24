@@ -1127,6 +1127,7 @@ function MemberChangePanel({
   onClose: () => void;
 }) {
   const [selectedOutId, setSelectedOutId] = useState<number | null>(null);
+  const [selectedInId, setSelectedInId] = useState<number | null>(null);
   const [newNumber, setNewNumber] = useState('');
   const [newName, setNewName] = useState('');
   const [addMessage, setAddMessage] = useState('');
@@ -1139,15 +1140,34 @@ function MemberChangePanel({
   function switchTab(tab: 'my' | 'opp') {
     setMemberTab(tab);
     setSelectedOutId(null);
+    setSelectedInId(null);
     setNewNumber('');
     setNewName('');
     setAddMessage('');
   }
 
-  async function handleSwap(inId: number) {
-    if (selectedOutId === null) return;
-    await onSubstitution(selectedOutId, inId, teamId);
+  function selectOut(id: number) {
+    const newOut = selectedOutId === id ? null : id;
+    setSelectedOutId(newOut);
+    // 両方揃ったら即交代
+    if (newOut && selectedInId) {
+      doSwap(newOut, selectedInId);
+    }
+  }
+
+  function selectIn(id: number) {
+    const newIn = selectedInId === id ? null : id;
+    setSelectedInId(newIn);
+    // 両方揃ったら即交代
+    if (selectedOutId && newIn) {
+      doSwap(selectedOutId, newIn);
+    }
+  }
+
+  async function doSwap(outId: number, inId: number) {
+    await onSubstitution(outId, inId, teamId);
     setSelectedOutId(null);
+    setSelectedInId(null);
   }
 
   async function handleAdd() {
@@ -1206,59 +1226,74 @@ function MemberChangePanel({
         <div>
           <p className="text-xs text-gray-400 mb-2 font-bold">
             コート上（{onCourt.length}人）
-            {selectedOutId === null && <span className="text-gray-500 ml-1">← OUTする選手をタップ</span>}
+            {!selectedOutId && !selectedInId && <span className="text-gray-500 ml-1">← 選手をタップ</span>}
+            {selectedInId && !selectedOutId && <span className="text-red-400 ml-1">← OUTする選手を選択</span>}
           </p>
           <div className="space-y-1">
-            {onCourt.map(player => (
-              <button
-                key={player.id}
-                onClick={() => setSelectedOutId(selectedOutId === player.id ? null : player.id!)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
-                  selectedOutId === player.id
-                    ? 'bg-red-600 text-white ring-2 ring-red-400'
-                    : 'bg-gray-800 text-white active:bg-gray-700'
-                }`}
-              >
-                <span>
-                  <span className="font-mono font-bold text-gray-400 mr-2">#{player.number}</span>
-                  {player.name}
-                </span>
-                {selectedOutId === player.id && <span className="text-xs font-bold bg-red-800 px-2 py-0.5 rounded">OUT</span>}
-              </button>
-            ))}
+            {onCourt.map(player => {
+              const isOut = selectedOutId === player.id;
+              const waitingForOut = selectedInId !== null && !selectedOutId;
+              return (
+                <button
+                  key={player.id}
+                  onClick={() => selectOut(player.id!)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
+                    isOut
+                      ? 'bg-red-600 text-white ring-2 ring-red-400'
+                      : waitingForOut
+                        ? 'bg-gray-800 text-white active:bg-red-700 border border-red-600'
+                        : 'bg-gray-800 text-white active:bg-gray-700'
+                  }`}
+                >
+                  <span>
+                    <span className="font-mono font-bold text-gray-400 mr-2">#{player.number}</span>
+                    {player.name}
+                  </span>
+                  {isOut && <span className="text-xs font-bold bg-red-800 px-2 py-0.5 rounded">OUT</span>}
+                  {waitingForOut && !isOut && <span className="text-xs text-red-400 font-bold">OUT</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* 交代矢印 */}
-        {selectedOutId !== null && (
-          <div className="text-center text-gray-400 text-sm font-bold py-1">↕ 交代先を選択</div>
+        {(selectedOutId !== null || selectedInId !== null) && (
+          <div className="text-center text-gray-400 text-sm font-bold py-1">↕ 交代</div>
         )}
 
         {/* ベンチ */}
         <div>
           <p className="text-xs text-gray-400 mb-2 font-bold">
             ベンチ（{bench.length}人）
-            {selectedOutId !== null && <span className="text-green-400 ml-1">← INする選手をタップ</span>}
+            {!selectedOutId && !selectedInId && <span className="text-gray-500 ml-1">← 選手をタップ</span>}
+            {selectedOutId && !selectedInId && <span className="text-green-400 ml-1">← INする選手を選択</span>}
           </p>
           <div className="space-y-1">
-            {bench.map(player => (
-              <button
-                key={player.id}
-                onClick={() => selectedOutId !== null && handleSwap(player.id!)}
-                disabled={selectedOutId === null}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
-                  selectedOutId !== null
-                    ? 'bg-gray-800 text-white active:bg-green-700 border border-green-700'
-                    : 'bg-gray-800 text-gray-500'
-                }`}
-              >
-                <span>
-                  <span className="font-mono font-bold text-gray-500 mr-2">#{player.number}</span>
-                  {player.name}
-                </span>
-                {selectedOutId !== null && <span className="text-xs text-green-400 font-bold">IN</span>}
-              </button>
-            ))}
+            {bench.map(player => {
+              const isIn = selectedInId === player.id;
+              const waitingForIn = selectedOutId !== null && !selectedInId;
+              return (
+                <button
+                  key={player.id}
+                  onClick={() => selectIn(player.id!)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center justify-between transition-colors ${
+                    isIn
+                      ? 'bg-green-600 text-white ring-2 ring-green-400'
+                      : waitingForIn
+                        ? 'bg-gray-800 text-white active:bg-green-700 border border-green-700'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                  }`}
+                >
+                  <span>
+                    <span className="font-mono font-bold text-gray-500 mr-2">#{player.number}</span>
+                    {player.name}
+                  </span>
+                  {isIn && <span className="text-xs font-bold bg-green-800 px-2 py-0.5 rounded">IN</span>}
+                  {waitingForIn && !isIn && <span className="text-xs text-green-400 font-bold">IN</span>}
+                </button>
+              );
+            })}
             {bench.length === 0 && (
               <p className="text-xs text-gray-500 py-2">ベンチに選手がいません。下の追加フォームから登録できます。</p>
             )}
