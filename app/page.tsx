@@ -66,8 +66,32 @@ export default function HomePage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-8 text-center">バスケスタッツ</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center">バスケスタッツ</h1>
 
+      {/* チーム未登録時の誘導 */}
+      {!hasTeams && (
+        <div className="bg-gray-800 rounded-xl p-8 text-center mb-6">
+          <p className="text-gray-400 mb-4">まずはチームと選手を登録しましょう</p>
+          <Link
+            href="/teams"
+            className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors active:scale-95"
+          >
+            チーム登録
+          </Link>
+        </div>
+      )}
+
+      {/* 新規試合ボタン（チーム登録済み） */}
+      {hasTeams && (
+        <Link
+          href="/games"
+          className="block bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl text-center text-lg mb-6 transition-colors active:scale-[0.98]"
+        >
+          ＋ 新規試合
+        </Link>
+      )}
+
+      {/* 最近の試合 */}
       {recentGames.length > 0 && (
         <div>
           <h2 className="text-xl font-semibold mb-4 text-gray-300">
@@ -110,25 +134,6 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
-      {/* 右下FAB */}
-      <div className="fixed bottom-24 right-6 z-40">
-        {!hasTeams ? (
-          <Link
-            href="/teams"
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-7 rounded-full text-base shadow-xl shadow-orange-500/25 transition-all active:scale-95"
-          >
-            チーム登録
-          </Link>
-        ) : (
-          <Link
-            href="/games"
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 px-7 rounded-full text-base shadow-xl shadow-orange-500/25 transition-all active:scale-95"
-          >
-            ＋ 新規試合
-          </Link>
-        )}
-      </div>
     </div>
   );
 }
