@@ -84,3 +84,15 @@ export function getCurrentWorkspace(): Workspace | null {
 export function logout() {
   localStorage.removeItem(SESSION_KEY);
 }
+
+// パスワード変更
+export async function changePasscode(workspaceId: string, currentPasscode: string, newPasscode: string): Promise<boolean> {
+  const workspaces = getWorkspaces();
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws) return false;
+  const currentHash = await hashPasscode(currentPasscode);
+  if (ws.passcodeHash !== currentHash) return false;
+  ws.passcodeHash = await hashPasscode(newPasscode);
+  saveWorkspaces(workspaces);
+  return true;
+}

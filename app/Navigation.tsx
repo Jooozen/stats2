@@ -12,7 +12,7 @@ const tabs = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { workspace, logout } = useAuth();
+  const { workspace } = useAuth();
 
   // スタッツ記録画面ではナビゲーションを非表示
   if (pathname.match(/^\/games\/\d+$/) && !pathname.endsWith('/summary')) {
@@ -43,13 +43,17 @@ export default function Navigation() {
           );
         })}
         {workspace && (
-          <button
-            onClick={logout}
-            className="flex flex-col items-center py-3 px-4 text-sm min-w-[64px] text-gray-500 hover:text-gray-300"
+          <Link
+            href="/account"
+            className={`flex flex-col items-center py-3 px-4 text-sm min-w-[64px] ${
+              pathname === '/account'
+                ? 'text-orange-400 border-t-2 border-orange-400'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
           >
-            <span className="text-[10px] mb-0.5 truncate max-w-[56px]">{workspace.name}</span>
-            <span className="text-[10px]">ログアウト</span>
-          </button>
+            <span className="text-xl mb-1">&#9881;</span>
+            <span className="text-xs font-medium truncate max-w-[56px]">{workspace.name}</span>
+          </Link>
         )}
       </div>
     </nav>
