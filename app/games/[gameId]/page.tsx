@@ -110,6 +110,8 @@ export default function GameStatsPage() {
   // 停止時の手入力用
   const [editMin, setEditMin] = useState('');
   const [editSec, setEditSec] = useState('');
+  const [editingMin, setEditingMin] = useState(false);
+  const [editingSec, setEditingSec] = useState(false);
 
   // 出場管理
   const [onCourtIds, setOnCourtIds] = useState<Set<number>>(new Set());
@@ -664,13 +666,18 @@ export default function GameStatsPage() {
             <div className="flex items-center gap-0.5">
               <input
                 type="number"
-                value={editMin || String(Math.floor(timerDisplay / 60))}
+                value={editingMin ? editMin : String(Math.floor(timerDisplay / 60))}
                 onChange={(e) => setEditMin(e.target.value)}
+                onFocus={() => {
+                  setEditingMin(true);
+                  setEditMin(String(Math.floor(timerDisplay / 60)));
+                }}
                 onBlur={() => {
-                  const m = parseInt(editMin) || 0;
+                  const m = editMin === '' ? 0 : (parseInt(editMin) || 0);
                   const s = Math.floor(timerDisplay % 60);
                   setTimerManual(m, s);
                   setEditMin('');
+                  setEditingMin(false);
                 }}
                 className="w-9 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-1 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 inputMode="numeric"
@@ -679,13 +686,18 @@ export default function GameStatsPage() {
               <span className="text-gray-400 text-sm font-bold">:</span>
               <input
                 type="number"
-                value={editSec || String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
+                value={editingSec ? editSec : String(Math.floor(timerDisplay % 60)).padStart(2, '0')}
                 onChange={(e) => setEditSec(e.target.value)}
+                onFocus={() => {
+                  setEditingSec(true);
+                  setEditSec(String(Math.floor(timerDisplay % 60)));
+                }}
                 onBlur={() => {
+                  const s = editSec === '' ? 0 : (parseInt(editSec) || 0);
                   const m = Math.floor(timerDisplay / 60);
-                  const s = parseInt(editSec) || 0;
                   setTimerManual(m, Math.min(s, 59));
                   setEditSec('');
+                  setEditingSec(false);
                 }}
                 className="w-9 bg-gray-700 text-white text-center text-sm font-mono font-bold rounded px-0.5 py-1 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 inputMode="numeric"
