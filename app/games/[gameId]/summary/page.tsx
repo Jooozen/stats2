@@ -3,8 +3,27 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { db, type Game, type Team, type Player, type StatEvent } from '@/lib/db';
+import { db, type Game, type Team, type Player, type StatEvent, type StatAction } from '@/lib/db';
 import { calcPlayerStats, calcTeamScore, emptyStats, mergeStats, type PlayerStats } from '@/lib/stats';
+
+const ACTION_LABEL_MAP: Record<StatAction, string> = {
+  pts2: '2P', pts3: '3P', ft: 'FT',
+  miss2: 'ミス2P', miss3: 'ミス3P', missFt: 'ミスFT',
+  reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK',
+  to: 'TO', foul: 'FOUL', subIn: 'IN', subOut: 'OUT',
+  timeout: 'タイムアウト',
+};
+
+function downloadCsv(filename: string, csvContent: string) {
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface PlayerRow {
   player: Player;
@@ -94,6 +113,48 @@ export default function GameSummaryPage() {
     return rows.reduce((acc, r) => mergeStats(acc, r.stats), emptyStats());
   }
 
+  function exportStatsCsv() {
+    if (!game || !myTeam || !opponentTeam) return;
+    const dateStr = new Date(game.date).toLocaleDateString('ja-JP').replace(/\//g, '-');
+    const header = '#,名前,チーム,PTS,FG,FGA,FG%,3P,3PA,3P%,FT,FTA,FT%,REB,AST,STL,BLK,TO,FOUL';
+    const toRow = (r: PlayerRow, teamName: string) => {
+      const s = r.stats;
+      const fgPct = s.fga > 0 ? (s.fg / s.fga * 100).toFixed(1) : '0.0';
+      const tpPct = s.tpa > 0 ? (s.tp / s.tpa * 100).toFixed(1) : '0.0';
+      const ftPct = s.fta > 0 ? (s.ft / s.fta * 100).toFixed(1) : '0.0';
+      return `${r.player.number},${r.player.name},${teamName},${s.pts},${s.fg},${s.fga},${fgPct},${s.tp},${s.tpa},${tpPct},${s.ft},${s.fta},${ftPct},${s.reb},${s.ast},${s.stl},${s.blk},${s.to},${s.foul}`;
+    };
+    const rows = [
+      header,
+      ...myRows.map((r) => toRow(r, myTeam.name)),
+      ...opponentRows.map((r) => toRow(r, opponentTeam.name)),
+    ];
+    downloadCsv(`stats_${dateStr}_${myTeam.name}_vs_${opponentTeam.name}.csv`, rows.join('\n'));
+  }
+
+  async function exportTimelineCsv() {
+    if (!game || !myTeam || !opponentTeam) return;
+    const dateStr = new Date(game.date).toLocaleDateString('ja-JP').replace(/\//g, '-');
+    const allEvents = await db.statEvents
+      .where('gameId')
+      .equals(gameId)
+      .toArray();
+    const sorted = allEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const allPlayers = [...(await db.players.where('teamId').equals(game.myTeamId).toArray()), ...(await db.players.where('teamId').equals(game.opponentTeamId).toArray())];
+    const playerMap = Object.fromEntries(allPlayers.map((p) => [p.id, p]));
+
+    const header = 'Q,時刻,チーム,#,選手名,アクション,ゾーン';
+    const rows = sorted.map((e) => {
+      const p = playerMap[e.playerId];
+      const teamName = e.teamId === game.myTeamId ? myTeam!.name : opponentTeam!.name;
+      const time = new Date(e.timestamp).toLocaleTimeString('ja-JP');
+      const actionLabel = ACTION_LABEL_MAP[e.action] || e.action;
+      return `Q${e.quarter},${time},${teamName},${p?.number ?? ''},${p?.name ?? ''},${actionLabel},${e.zone ?? ''}`;
+    });
+    downloadCsv(`timeline_${dateStr}_${myTeam.name}_vs_${opponentTeam.name}.csv`, [header, ...rows].join('\n'));
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -155,6 +216,22 @@ export default function GameSummaryPage() {
             {opponentTeam?.name}
           </span>
         </div>
+      </div>
+
+      {/* CSV出力ボタン */}
+      <div className="flex gap-3 mb-6">
+        <button
+          onClick={exportStatsCsv}
+          className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-lg transition-colors text-sm"
+        >
+          スタッツCSV出力
+        </button>
+        <button
+          onClick={exportTimelineCsv}
+          className="flex-1 bg-teal-700 hover:bg-teal-600 text-white font-bold py-3 rounded-lg transition-colors text-sm"
+        >
+          タイムラインCSV出力
+        </button>
       </div>
 
       {/* 自チームスタッツ */}
