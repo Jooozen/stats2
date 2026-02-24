@@ -110,6 +110,9 @@ export default function GameStatsPage() {
 
   // 出場管理
   const [onCourtIds, setOnCourtIds] = useState<Set<number>>(new Set());
+  // 紅白戦用: サイド別コート上選手
+  const [onCourtMySideIds, setOnCourtMySideIds] = useState<Set<number>>(new Set());
+  const [onCourtOppSideIds, setOnCourtOppSideIds] = useState<Set<number>>(new Set());
 
   // スターティング5選択
   const [showStartingLineup, setShowStartingLineup] = useState(false);
@@ -165,6 +168,9 @@ export default function GameStatsPage() {
 
       if (g.onCourtPlayerIds && g.onCourtPlayerIds.length > 0) {
         setOnCourtIds(new Set(g.onCourtPlayerIds));
+        // 紅白戦用サイド別復元
+        if (g.onCourtMySideIds) setOnCourtMySideIds(new Set(g.onCourtMySideIds));
+        if (g.onCourtOppSideIds) setOnCourtOppSideIds(new Set(g.onCourtOppSideIds));
       } else {
         setShowStartingLineup(true);
       }
@@ -278,14 +284,6 @@ export default function GameStatsPage() {
       await db.games.update(game.id, { timerSeconds: total });
     }
   }
-
-  // スコア算出
-  const myScore = calcTeamScore(
-    events.filter((e) => game && e.teamId === game.myTeamId)
-  );
-  const opponentScore = calcTeamScore(
-    events.filter((e) => game && e.teamId === game.opponentTeamId)
-  );
 
   const selectedPlayer = selectedPlayerId
     ? (selectedSide === 'my' ? myPlayers : opponentPlayers).find((p) => p.id === selectedPlayerId)
@@ -428,33 +426,64 @@ export default function GameStatsPage() {
     }
   }
 
-  async function handleSubstitution(outPlayerId: number, inPlayerId: number, teamId: number) {
+  async function handleSubstitution(outPlayerId: number, inPlayerId: number, teamId: number, side?: 'my' | 'opp') {
     const gt = getGameTime();
     const next = new Set(onCourtIds);
     next.delete(outPlayerId);
     next.add(inPlayerId);
     setOnCourtIds(next);
 
+    // 紅白戦用: サイド別更新
+    const isSameTeam = game?.myTeamId === game?.opponentTeamId;
+    let nextMy = onCourtMySideIds;
+    let nextOpp = onCourtOppSideIds;
+    if (isSameTeam && side) {
+      if (side === 'my') {
+        nextMy = new Set(onCourtMySideIds);
+        nextMy.delete(outPlayerId);
+        nextMy.add(inPlayerId);
+        setOnCourtMySideIds(nextMy);
+      } else {
+        nextOpp = new Set(onCourtOppSideIds);
+        nextOpp.delete(outPlayerId);
+        nextOpp.add(inPlayerId);
+        setOnCourtOppSideIds(nextOpp);
+      }
+    }
+
+    // 紅白戦B側は仮想teamIdで記録
+    const eventTeamId = (isSameTeam && side === 'opp') ? -teamId : teamId;
+
     await db.statEvents.add({
-      gameId, playerId: outPlayerId, teamId, quarter,
+      gameId, playerId: outPlayerId, teamId: eventTeamId, quarter,
       action: 'subOut', timestamp: new Date(), gameTime: gt,
     });
     await db.statEvents.add({
-      gameId, playerId: inPlayerId, teamId, quarter,
+      gameId, playerId: inPlayerId, teamId: eventTeamId, quarter,
       action: 'subIn', timestamp: new Date(), gameTime: gt,
     });
 
     if (game?.id) {
-      await db.games.update(game.id, { onCourtPlayerIds: Array.from(next) });
+      const update: Partial<Game> = { onCourtPlayerIds: Array.from(next) };
+      if (isSameTeam) {
+        update.onCourtMySideIds = Array.from(nextMy);
+        update.onCourtOppSideIds = Array.from(nextOpp);
+      }
+      await db.games.update(game.id, update);
     }
     await reloadEvents();
   }
 
-  async function confirmStartingLineup(selectedIds: number[]) {
+  async function confirmStartingLineup(selectedIds: number[], mySideIds?: number[], oppSideIds?: number[]) {
     const next = new Set(selectedIds);
     setOnCourtIds(next);
+    if (mySideIds) setOnCourtMySideIds(new Set(mySideIds));
+    if (oppSideIds) setOnCourtOppSideIds(new Set(oppSideIds));
     if (game?.id) {
-      await db.games.update(game.id, { onCourtPlayerIds: selectedIds });
+      const update: Partial<Game> = { onCourtPlayerIds: selectedIds };
+      if (mySideIds) update.onCourtMySideIds = mySideIds;
+      if (oppSideIds) update.onCourtOppSideIds = oppSideIds;
+      await db.games.update(game.id, update);
     }
     setShowStartingLineup(false);
   }
@@ -499,7 +528,18 @@ export default function GameStatsPage() {
     );
   }
 
+  const isIntraSquad = game.myTeamId === game.opponentTeamId;
+  // 紅白戦用仮想チームID: B側は myTeamId の負数を使用
+  const virtualOppTeamId = isIntraSquad ? -game.myTeamId : game.opponentTeamId;
   const hasSelection = selectedPlayerId !== null && selectedTeamId !== null;
+
+  // スコア算出
+  const myScore = calcTeamScore(
+    events.filter((e) => e.teamId === game.myTeamId)
+  );
+  const opponentScore = calcTeamScore(
+    events.filter((e) => e.teamId === virtualOppTeamId)
+  );
 
   // ファール集計
   function getPlayerFouls(playerId: number): number {
@@ -509,7 +549,7 @@ export default function GameStatsPage() {
     return events.filter((e) => e.teamId === teamId && e.action === 'foul' && e.quarter === quarter).length;
   }
   const myTeamQFouls = getTeamQuarterFouls(game.myTeamId);
-  const oppTeamQFouls = getTeamQuarterFouls(game.opponentTeamId);
+  const oppTeamQFouls = getTeamQuarterFouls(isIntraSquad ? virtualOppTeamId : game.opponentTeamId);
 
   // タイムアウト集計
   const categoryConfig = game.category ? GAME_CATEGORY_CONFIG[game.category] : null;
@@ -539,7 +579,7 @@ export default function GameStatsPage() {
   }
 
   const myTO = getTimeoutRemaining(game.myTeamId);
-  const oppTO = getTimeoutRemaining(game.opponentTeamId);
+  const oppTO = getTimeoutRemaining(isIntraSquad ? virtualOppTeamId : game.opponentTeamId);
 
   async function handleTimeout(teamId: number) {
     const gt = getGameTime();
@@ -560,7 +600,7 @@ export default function GameStatsPage() {
         <div className="flex items-center justify-center gap-2">
           <div className="flex items-center gap-1">
             <span className="text-sm font-bold text-orange-400 truncate max-w-[80px]">
-              {myTeam?.name || '自チーム'}
+              {isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')}
             </span>
             {myTeamQFouls > 0 && (
               <span className={`text-[10px] font-bold px-1 rounded ${myTeamQFouls >= 5 ? 'bg-red-600 text-white' : 'bg-gray-700 text-yellow-400'}`}>
@@ -578,7 +618,7 @@ export default function GameStatsPage() {
               </span>
             )}
             <span className="text-sm font-bold text-blue-400 truncate max-w-[80px]">
-              {opponentTeam?.name || '相手'}
+              {isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')}
             </span>
           </div>
         </div>
@@ -698,7 +738,7 @@ export default function GameStatsPage() {
             <button
               onClick={() => {
                 if (oppTO.used >= oppTO.max) { showFeedback('タイムアウト残り0回です'); return; }
-                handleTimeout(game.opponentTeamId);
+                handleTimeout(isIntraSquad ? virtualOppTeamId : game.opponentTeamId);
               }}
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
                 oppTO.used < oppTO.max
@@ -742,16 +782,16 @@ export default function GameStatsPage() {
           <div className="flex-1 border-r border-gray-700 overflow-y-auto">
             <div className="px-0.5 py-0.5">
               <h3 className="text-center text-[10px] text-orange-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
-                {myTeam?.name}
+                {isIntraSquad ? `${myTeam?.name} A` : myTeam?.name}
               </h3>
               <div className="space-y-px">
-                {myPlayers.filter(p => onCourtIds.has(p.id!)).map((player) => (
+                {myPlayers.filter(p => isIntraSquad ? onCourtMySideIds.has(p.id!) : onCourtIds.has(p.id!)).map((player) => (
                   <PlayerRow
                     key={player.id}
                     player={player}
                     teamId={game.myTeamId}
                     isSelected={selectedPlayerId === player.id && selectedSide === 'my'}
-                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id && e.teamId === game.myTeamId))}
                     fouls={getPlayerFouls(player.id!)}
                     teamColor="orange"
                     onSelect={() => {
@@ -769,23 +809,23 @@ export default function GameStatsPage() {
           <div className="flex-1 overflow-y-auto">
             <div className="px-0.5 py-0.5">
               <h3 className="text-center text-[10px] text-blue-400 font-bold sticky top-0 bg-gray-900 py-0.5 z-10">
-                {opponentTeam?.name}
+                {isIntraSquad ? `${opponentTeam?.name} B` : opponentTeam?.name}
               </h3>
               <div className="space-y-px">
-                {opponentPlayers.filter(p => onCourtIds.has(p.id!)).map((player) => (
+                {opponentPlayers.filter(p => isIntraSquad ? onCourtOppSideIds.has(p.id!) : onCourtIds.has(p.id!)).map((player) => (
                   <PlayerRow
                     key={player.id}
                     player={player}
-                    teamId={game.opponentTeamId}
+                    teamId={isIntraSquad ? virtualOppTeamId : game.opponentTeamId}
                     isSelected={selectedPlayerId === player.id && selectedSide === 'opp'}
-                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id))}
+                    pts={calcTeamScore(events.filter((e) => e.playerId === player.id && e.teamId === (isIntraSquad ? virtualOppTeamId : game.opponentTeamId)))}
                     fouls={getPlayerFouls(player.id!)}
                     teamColor="blue"
                     onSelect={() => {
                       if (selectedPlayerId === player.id && selectedSide === 'opp') {
                         clearSelection(); setSelectedSide(null);
                       } else {
-                        selectPlayer(player.id!, game.opponentTeamId); setSelectedSide('opp');
+                        selectPlayer(player.id!, isIntraSquad ? virtualOppTeamId : game.opponentTeamId); setSelectedSide('opp');
                       }
                     }}
                   />
@@ -984,7 +1024,7 @@ export default function GameStatsPage() {
           myTeam={myTeam}
           opponentTeam={opponentTeam}
           myPlayerStats={getPlayerStatsForTeam(game.myTeamId, myPlayers)}
-          oppPlayerStats={getPlayerStatsForTeam(game.opponentTeamId, opponentPlayers)}
+          oppPlayerStats={getPlayerStatsForTeam(isIntraSquad ? virtualOppTeamId : game.opponentTeamId, opponentPlayers)}
           statsTab={statsTab}
           setStatsTab={setStatsTab}
           onClose={() => setShowStats(false)}
@@ -998,8 +1038,10 @@ export default function GameStatsPage() {
           myPlayers={myPlayers}
           opponentPlayers={opponentPlayers}
           myTeamId={game.myTeamId}
-          myTeamName={myTeam?.name || '自チーム'}
-          oppTeamName={opponentTeam?.name || '相手'}
+          virtualOppTeamId={virtualOppTeamId}
+          isIntraSquad={isIntraSquad}
+          myTeamName={isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')}
+          oppTeamName={isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')}
           onUpdate={async (eventId, newAction) => {
             await db.statEvents.update(eventId, { action: newAction });
             await reloadEvents();
@@ -1022,6 +1064,9 @@ export default function GameStatsPage() {
           myTeamId={game.myTeamId}
           opponentTeamId={game.opponentTeamId}
           onCourtIds={onCourtIds}
+          onCourtMySideIds={onCourtMySideIds}
+          onCourtOppSideIds={onCourtOppSideIds}
+          isIntraSquad={isIntraSquad}
           memberTab={memberTab}
           setMemberTab={setMemberTab}
           onSubstitution={handleSubstitution}
@@ -1039,6 +1084,7 @@ export default function GameStatsPage() {
           opponentPlayers={opponentPlayers}
           myTeamId={game.myTeamId}
           opponentTeamId={game.opponentTeamId}
+          isIntraSquad={isIntraSquad}
           onConfirm={confirmStartingLineup}
           onAddPlayer={handleAddPlayer}
         />
@@ -1108,6 +1154,9 @@ function MemberChangePanel({
   myTeamId,
   opponentTeamId,
   onCourtIds,
+  onCourtMySideIds,
+  onCourtOppSideIds,
+  isIntraSquad,
   memberTab,
   setMemberTab,
   onSubstitution,
@@ -1121,9 +1170,12 @@ function MemberChangePanel({
   myTeamId: number;
   opponentTeamId: number;
   onCourtIds: Set<number>;
+  onCourtMySideIds: Set<number>;
+  onCourtOppSideIds: Set<number>;
+  isIntraSquad: boolean;
   memberTab: 'my' | 'opp';
   setMemberTab: (tab: 'my' | 'opp') => void;
-  onSubstitution: (outId: number, inId: number, teamId: number) => Promise<void>;
+  onSubstitution: (outId: number, inId: number, teamId: number, side?: 'my' | 'opp') => Promise<void>;
   onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1135,8 +1187,17 @@ function MemberChangePanel({
 
   const teamId = memberTab === 'my' ? myTeamId : opponentTeamId;
   const players = memberTab === 'my' ? myPlayers : opponentPlayers;
-  const onCourt = players.filter(p => onCourtIds.has(p.id!));
-  const bench = players.filter(p => !onCourtIds.has(p.id!));
+
+  // 紅白戦時はサイド別、通常時はonCourtIds
+  const sideCourtIds = isIntraSquad
+    ? (memberTab === 'my' ? onCourtMySideIds : onCourtOppSideIds)
+    : onCourtIds;
+  const otherSideCourtIds = isIntraSquad
+    ? (memberTab === 'my' ? onCourtOppSideIds : onCourtMySideIds)
+    : new Set<number>();
+  const onCourt = players.filter(p => sideCourtIds.has(p.id!));
+  // ベンチ: コートにいない選手。紅白戦時は相手側コートの選手も除外
+  const bench = players.filter(p => !sideCourtIds.has(p.id!) && !otherSideCourtIds.has(p.id!));
 
   function switchTab(tab: 'my' | 'opp') {
     setMemberTab(tab);
@@ -1166,7 +1227,7 @@ function MemberChangePanel({
   }
 
   async function doSwap(outId: number, inId: number) {
-    await onSubstitution(outId, inId, teamId);
+    await onSubstitution(outId, inId, teamId, memberTab);
     setSelectedOutId(null);
     setSelectedInId(null);
   }
@@ -1210,7 +1271,7 @@ function MemberChangePanel({
             memberTab === 'my' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          {myTeam?.name || '自チーム'}
+          {isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')}
         </button>
         <button
           onClick={() => switchTab('opp')}
@@ -1218,7 +1279,7 @@ function MemberChangePanel({
             memberTab === 'opp' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          {opponentTeam?.name || '相手'}
+          {isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')}
         </button>
       </div>
 
@@ -1342,6 +1403,7 @@ function StartingLineupPanel({
   opponentPlayers,
   myTeamId,
   opponentTeamId,
+  isIntraSquad,
   onConfirm,
   onAddPlayer,
 }: {
@@ -1351,7 +1413,8 @@ function StartingLineupPanel({
   opponentPlayers: Player[];
   myTeamId: number;
   opponentTeamId: number;
-  onConfirm: (selectedIds: number[]) => void;
+  isIntraSquad: boolean;
+  onConfirm: (selectedIds: number[], mySideIds?: number[], oppSideIds?: number[]) => void;
   onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
 }) {
   const [mySelected, setMySelected] = useState<Set<number>>(new Set());
@@ -1364,6 +1427,8 @@ function StartingLineupPanel({
   const [oppAddName, setOppAddName] = useState('');
 
   function toggleMy(id: number) {
+    // 紅白戦: 相手側で既に選ばれていたら選択不可
+    if (isIntraSquad && oppSelected.has(id)) return;
     const next = new Set(mySelected);
     if (next.has(id)) next.delete(id);
     else if (next.size < 5) next.add(id);
@@ -1371,6 +1436,8 @@ function StartingLineupPanel({
   }
 
   function toggleOpp(id: number) {
+    // 紅白戦: 自チーム側で既に選ばれていたら選択不可
+    if (isIntraSquad && mySelected.has(id)) return;
     const next = new Set(oppSelected);
     if (next.has(id)) next.delete(id);
     else if (next.size < 5) next.add(id);
@@ -1380,7 +1447,6 @@ function StartingLineupPanel({
   async function handleMyAdd() {
     const num = parseInt(myAddNumber);
     const name = myAddName.trim();
-    // 背番号か名前のどちらかが必要
     if (isNaN(num) && !name) return;
     const finalNum = isNaN(num) ? 0 : num;
     if (!isNaN(num) && myPlayers.some(p => p.number === num)) {
@@ -1396,10 +1462,11 @@ function StartingLineupPanel({
   async function handleOppAdd() {
     const num = parseInt(oppAddNumber);
     const name = oppAddName.trim();
-    // 背番号か名前のどちらかが必要
     if (isNaN(num) && !name) return;
     const finalNum = isNaN(num) ? 0 : num;
-    if (!isNaN(num) && opponentPlayers.some(p => p.number === num)) {
+    // 紅白戦時は同じチームの選手リストをチェック
+    const checkPlayers = isIntraSquad ? myPlayers : opponentPlayers;
+    if (!isNaN(num) && checkPlayers.some(p => p.number === num)) {
       setOppAddNumber('');
       setOppAddName('');
       return;
@@ -1411,20 +1478,36 @@ function StartingLineupPanel({
 
   const canConfirm = mySelected.size === 5 && oppSelected.size === 5;
 
+  // 紅白戦時は両側とも同じ選手リストを表示（選択済みの選手はグレーアウト）
+  const allPlayers = isIntraSquad ? myPlayers : null;
+
+  function handleConfirm() {
+    if (!canConfirm) return;
+    const myArr = Array.from(mySelected);
+    const oppArr = Array.from(oppSelected);
+    if (isIntraSquad) {
+      onConfirm([...myArr, ...oppArr], myArr, oppArr);
+    } else {
+      onConfirm([...myArr, ...oppArr]);
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/95 z-50 flex flex-col">
       <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 text-center">
         <h2 className="text-lg font-bold text-white">スターティング5を選択</h2>
-        <p className="text-xs text-gray-400 mt-1">各チーム5名を選んでください</p>
+        <p className="text-xs text-gray-400 mt-1">
+          {isIntraSquad ? '紅白戦: 同じチームから各サイド5名を選んでください' : '各チーム5名を選んでください'}
+        </p>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* 自チーム */}
+        {/* 自チーム側 */}
         <div className="flex-1 border-r border-gray-700 overflow-y-auto px-2 py-2">
           <h3 className="text-center text-sm font-bold text-orange-400 mb-2 sticky top-0 bg-black/80 py-1 z-10">
-            {myTeam?.name || '自チーム'} ({mySelected.size}/5)
+            {isIntraSquad ? `${myTeam?.name || 'チーム'} A` : (myTeam?.name || '自チーム')} ({mySelected.size}/5)
           </h3>
-          {/* 自チーム選手追加 */}
+          {/* 選手追加 */}
           <div className="flex gap-1 mb-2">
             <input
               type="number"
@@ -1450,75 +1533,93 @@ function StartingLineupPanel({
             </button>
           </div>
           <div className="space-y-1">
-            {myPlayers.map(player => (
-              <button
-                key={player.id}
-                onClick={() => toggleMy(player.id!)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  mySelected.has(player.id!)
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-gray-800 text-gray-300 active:bg-gray-700'
-                }`}
-              >
-                <span className="font-mono font-bold mr-2">#{player.number}</span>
-                {player.name}
-              </button>
-            ))}
+            {(allPlayers || myPlayers).map(player => {
+              const isMySelected = mySelected.has(player.id!);
+              const isOppSelected = isIntraSquad && oppSelected.has(player.id!);
+              return (
+                <button
+                  key={player.id}
+                  onClick={() => toggleMy(player.id!)}
+                  disabled={isOppSelected}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isMySelected
+                      ? 'bg-orange-500 text-white'
+                      : isOppSelected
+                        ? 'bg-gray-900 text-gray-600 cursor-not-allowed'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                  }`}
+                >
+                  <span className="font-mono font-bold mr-2">#{player.number}</span>
+                  {player.name}
+                  {isOppSelected && <span className="text-[10px] text-blue-400 ml-1">(B側)</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* 相手チーム */}
+        {/* 相手チーム側 */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
           <h3 className="text-center text-sm font-bold text-blue-400 mb-2 sticky top-0 bg-black/80 py-1 z-10">
-            {opponentTeam?.name || '相手'} ({oppSelected.size}/5)
+            {isIntraSquad ? `${opponentTeam?.name || 'チーム'} B` : (opponentTeam?.name || '相手')} ({oppSelected.size}/5)
           </h3>
-          {/* 相手チーム選手追加（背番号 + 名前、どちらか必須） */}
-          <div className="flex gap-1 mb-2">
-            <input
-              type="number"
-              value={oppAddNumber}
-              onChange={e => setOppAddNumber(e.target.value)}
-              placeholder="番号"
-              className="w-16 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              inputMode="numeric"
-            />
-            <input
-              type="text"
-              value={oppAddName}
-              onChange={e => setOppAddName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleOppAdd()}
-              placeholder="名前"
-              className="flex-1 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
-            />
-            <button
-              onClick={handleOppAdd}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg whitespace-nowrap"
-            >
-              追加
-            </button>
-          </div>
-          <div className="space-y-1">
-            {opponentPlayers.map(player => (
+          {/* 選手追加 */}
+          {!isIntraSquad && (
+            <div className="flex gap-1 mb-2">
+              <input
+                type="number"
+                value={oppAddNumber}
+                onChange={e => setOppAddNumber(e.target.value)}
+                placeholder="番号"
+                className="w-16 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                inputMode="numeric"
+              />
+              <input
+                type="text"
+                value={oppAddName}
+                onChange={e => setOppAddName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleOppAdd()}
+                placeholder="名前"
+                className="flex-1 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+              />
               <button
-                key={player.id}
-                onClick={() => toggleOpp(player.id!)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  oppSelected.has(player.id!)
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 active:bg-gray-700'
-                }`}
+                onClick={handleOppAdd}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg whitespace-nowrap"
               >
-                <span className="font-mono font-bold mr-2">#{player.number}</span>
-                {player.name}
+                追加
               </button>
-            ))}
+            </div>
+          )}
+          <div className="space-y-1">
+            {(allPlayers || opponentPlayers).map(player => {
+              const isOppSelected = oppSelected.has(player.id!);
+              const isMySelected = isIntraSquad && mySelected.has(player.id!);
+              return (
+                <button
+                  key={player.id}
+                  onClick={() => toggleOpp(player.id!)}
+                  disabled={isMySelected}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isOppSelected
+                      ? 'bg-blue-500 text-white'
+                      : isMySelected
+                        ? 'bg-gray-900 text-gray-600 cursor-not-allowed'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                  }`}
+                >
+                  <span className="font-mono font-bold mr-2">#{player.number}</span>
+                  {player.name}
+                  {isMySelected && <span className="text-[10px] text-orange-400 ml-1">(A側)</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
       <div className="bg-gray-800 border-t border-gray-700 px-4 py-3">
         <button
-          onClick={() => canConfirm && onConfirm([...Array.from(mySelected), ...Array.from(oppSelected)])}
+          onClick={handleConfirm}
           disabled={!canConfirm}
           className={`w-full py-4 rounded-xl text-lg font-bold transition-colors ${
             canConfirm
@@ -1528,7 +1629,7 @@ function StartingLineupPanel({
         >
           {canConfirm
             ? '確定して試合開始'
-            : `自チームあと${5 - mySelected.size}人・相手あと${5 - oppSelected.size}人`
+            : `${isIntraSquad ? 'A' : '自チーム'}あと${5 - mySelected.size}人・${isIntraSquad ? 'B' : '相手'}あと${5 - oppSelected.size}人`
           }
         </button>
       </div>
@@ -1675,6 +1776,8 @@ function TimelinePanel({
   myPlayers,
   opponentPlayers,
   myTeamId,
+  virtualOppTeamId,
+  isIntraSquad,
   myTeamName,
   oppTeamName,
   onUpdate,
@@ -1685,6 +1788,8 @@ function TimelinePanel({
   myPlayers: Player[];
   opponentPlayers: Player[];
   myTeamId: number;
+  virtualOppTeamId: number;
+  isIntraSquad: boolean;
   myTeamName: string;
   oppTeamName: string;
   onUpdate: (eventId: number, newAction: StatAction) => Promise<void>;

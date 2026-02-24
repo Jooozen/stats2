@@ -66,6 +66,9 @@ export interface Game {
   timerRunning?: boolean;    // タイマー実行中フラグ
   // 出場選手管理（永続化）
   onCourtPlayerIds?: number[];
+  // 紅白戦用: サイド別のコート上選手ID
+  onCourtMySideIds?: number[];
+  onCourtOppSideIds?: number[];
 }
 
 // スタッツイベント
