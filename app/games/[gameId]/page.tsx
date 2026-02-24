@@ -1037,6 +1037,7 @@ export default function GameStatsPage() {
           opponentTeam={opponentTeam}
           myPlayers={myPlayers}
           opponentPlayers={opponentPlayers}
+          myTeamId={game.myTeamId}
           opponentTeamId={game.opponentTeamId}
           onConfirm={confirmStartingLineup}
           onAddPlayer={handleAddPlayer}
@@ -1339,6 +1340,7 @@ function StartingLineupPanel({
   opponentTeam,
   myPlayers,
   opponentPlayers,
+  myTeamId,
   opponentTeamId,
   onConfirm,
   onAddPlayer,
@@ -1347,13 +1349,19 @@ function StartingLineupPanel({
   opponentTeam: Team | null;
   myPlayers: Player[];
   opponentPlayers: Player[];
+  myTeamId: number;
   opponentTeamId: number;
   onConfirm: (selectedIds: number[]) => void;
   onAddPlayer: (teamId: number, number: number, name: string) => Promise<void>;
 }) {
   const [mySelected, setMySelected] = useState<Set<number>>(new Set());
   const [oppSelected, setOppSelected] = useState<Set<number>>(new Set());
-  const [addNumber, setAddNumber] = useState('');
+  // 自チーム追加フォーム
+  const [myAddNumber, setMyAddNumber] = useState('');
+  const [myAddName, setMyAddName] = useState('');
+  // 相手チーム追加フォーム
+  const [oppAddNumber, setOppAddNumber] = useState('');
+  const [oppAddName, setOppAddName] = useState('');
 
   function toggleMy(id: number) {
     const next = new Set(mySelected);
@@ -1369,16 +1377,36 @@ function StartingLineupPanel({
     setOppSelected(next);
   }
 
-  async function handleQuickAdd() {
-    const num = parseInt(addNumber);
-    if (isNaN(num)) return;
-    const exists = opponentPlayers.some(p => p.number === num);
-    if (exists) {
-      setAddNumber('');
+  async function handleMyAdd() {
+    const num = parseInt(myAddNumber);
+    const name = myAddName.trim();
+    // 背番号か名前のどちらかが必要
+    if (isNaN(num) && !name) return;
+    const finalNum = isNaN(num) ? 0 : num;
+    if (!isNaN(num) && myPlayers.some(p => p.number === num)) {
+      setMyAddNumber('');
+      setMyAddName('');
       return;
     }
-    await onAddPlayer(opponentTeamId, num, '');
-    setAddNumber('');
+    await onAddPlayer(myTeamId, finalNum, name);
+    setMyAddNumber('');
+    setMyAddName('');
+  }
+
+  async function handleOppAdd() {
+    const num = parseInt(oppAddNumber);
+    const name = oppAddName.trim();
+    // 背番号か名前のどちらかが必要
+    if (isNaN(num) && !name) return;
+    const finalNum = isNaN(num) ? 0 : num;
+    if (!isNaN(num) && opponentPlayers.some(p => p.number === num)) {
+      setOppAddNumber('');
+      setOppAddName('');
+      return;
+    }
+    await onAddPlayer(opponentTeamId, finalNum, name);
+    setOppAddNumber('');
+    setOppAddName('');
   }
 
   const canConfirm = mySelected.size === 5 && oppSelected.size === 5;
@@ -1396,6 +1424,31 @@ function StartingLineupPanel({
           <h3 className="text-center text-sm font-bold text-orange-400 mb-2 sticky top-0 bg-black/80 py-1 z-10">
             {myTeam?.name || '自チーム'} ({mySelected.size}/5)
           </h3>
+          {/* 自チーム選手追加 */}
+          <div className="flex gap-1 mb-2">
+            <input
+              type="number"
+              value={myAddNumber}
+              onChange={e => setMyAddNumber(e.target.value)}
+              placeholder="番号"
+              className="w-16 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              inputMode="numeric"
+            />
+            <input
+              type="text"
+              value={myAddName}
+              onChange={e => setMyAddName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleMyAdd()}
+              placeholder="名前"
+              className="flex-1 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 min-w-0"
+            />
+            <button
+              onClick={handleMyAdd}
+              className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-lg whitespace-nowrap"
+            >
+              追加
+            </button>
+          </div>
           <div className="space-y-1">
             {myPlayers.map(player => (
               <button
@@ -1419,19 +1472,26 @@ function StartingLineupPanel({
           <h3 className="text-center text-sm font-bold text-blue-400 mb-2 sticky top-0 bg-black/80 py-1 z-10">
             {opponentTeam?.name || '相手'} ({oppSelected.size}/5)
           </h3>
-          {/* 背番号クイック追加 */}
+          {/* 相手チーム選手追加（背番号 + 名前、どちらか必須） */}
           <div className="flex gap-1 mb-2">
             <input
               type="number"
-              value={addNumber}
-              onChange={e => setAddNumber(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleQuickAdd()}
-              placeholder="背番号"
-              className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={oppAddNumber}
+              onChange={e => setOppAddNumber(e.target.value)}
+              placeholder="番号"
+              className="w-16 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm text-center placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               inputMode="numeric"
             />
+            <input
+              type="text"
+              value={oppAddName}
+              onChange={e => setOppAddName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleOppAdd()}
+              placeholder="名前"
+              className="flex-1 bg-gray-700 text-white rounded-lg px-2 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+            />
             <button
-              onClick={handleQuickAdd}
+              onClick={handleOppAdd}
               className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg whitespace-nowrap"
             >
               追加
